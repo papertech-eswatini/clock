@@ -1,0 +1,657 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PTE Clock In / Out</title>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<style>
+:root{
+  --bg:#f4f6f8; --card:#fff; --ink:#1d2733; --muted:#6b7785; --line:#e1e6eb;
+  --brand:#1f5fa8; --in:#1e8e4e; --out:#c0582b; --warn:#b8860b; --bad:#c62828;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif}
+header{background:var(--brand);color:#fff;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+header h1{margin:0;font-size:20px;font-weight:700}
+header .sub{font-size:12px;opacity:.85}
+.nobuddy{display:flex;align-items:center;gap:10px;background:#d32f2f;color:#fff;border-radius:10px;padding:8px 14px;
+  box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.nobuddy svg{width:38px;height:38px;flex:none}
+.nobuddy b{display:block;font-size:18px;letter-spacing:.5px}
+.nobuddy span{display:block;font-size:13px;opacity:.95}
+#clock{font-size:34px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:1px}
+#date{font-size:13px;opacity:.9;text-align:right}
+main{max-width:1200px;margin:0 auto;padding:16px;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:16px}
+@media (max-width:860px){main{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+.camwrap{position:relative;background:#16324f;border-radius:10px;overflow:hidden;aspect-ratio:4/3}
+video{width:100%;height:100%;object-fit:cover;display:block;transform:scaleX(-1)}
+.guide{display:none}
+.camwrap.scan .guide{display:block}
+.face{position:absolute;left:36%;right:36%;top:10%;height:38%;border:3px dashed rgba(255,255,255,.55);border-radius:50%;pointer-events:none}
+.frame{position:absolute;left:30%;right:30%;top:54%;bottom:15%;border:3px dashed rgba(255,214,0,.85);border-radius:14px;pointer-events:none}
+.frame span{position:absolute;top:-24px;left:0;right:0;text-align:center;color:#ffd600;font-size:13px;text-shadow:0 1px 3px #000}
+.hint{position:absolute;left:0;right:0;bottom:6px;text-align:center;color:#fff;font-size:clamp(11px,2.2vw,15px);text-shadow:0 1px 3px #000}
+#modeBar{position:absolute;left:0;right:0;top:0;padding:8px 12px;color:#fff;font-size:clamp(15px,3vw,22px);font-weight:700;
+  display:flex;align-items:center;justify-content:space-between;gap:8px}
+#modeBar.in{background:rgba(30,142,78,.92)}
+#modeBar.out{background:rgba(192,88,43,.92)}
+#modeBar button{font-size:13px;padding:4px 10px;background:rgba(255,255,255,.9);border:0}
+#chooser{position:absolute;inset:0;display:flex;gap:4%;align-items:center;justify-content:center;padding:6%;
+  background:rgba(22,50,79,.92)}
+.camwrap.scan #chooser{display:none}
+.big-btn{flex:1;height:78%;border:0;border-radius:18px;color:#fff;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;box-shadow:0 6px 18px rgba(0,0,0,.25)}
+.big-btn .ico{font-size:clamp(34px,7vw,60px)}
+.big-btn .t1{font-size:clamp(18px,3.4vw,34px);font-weight:700;white-space:nowrap}
+.big-btn .t2{font-size:clamp(14px,2.6vw,20px);opacity:.9}
+.big-btn.in{background:var(--in)}
+.big-btn.out{background:var(--out)}
+.big-btn:active{transform:scale(.98)}
+#flash{position:absolute;inset:0;background:#fff;opacity:0;transition:opacity .12s;pointer-events:none}
+#result{margin-top:14px;border-radius:12px;padding:18px;text-align:center;min-height:120px;
+  display:flex;flex-direction:column;justify-content:center;background:#eef2f6;transition:background .2s}
+#result .big{font-size:30px;font-weight:700}
+#result .who{font-size:22px;margin-top:4px}
+#result .small{font-size:14px;color:var(--muted);margin-top:6px}
+#result .flag{font-size:15px;color:var(--warn);margin-top:6px;font-weight:600}
+#result .act{margin:12px auto 0;font-size:18px;font-weight:700;padding:10px 20px;border-radius:10px;
+  border:2px solid currentColor;background:#fff;color:inherit}
+#result.warn .big{color:#8a6100}
+#result.in{background:#e3f4ea;color:var(--in)}
+#result.out{background:#fbeae2;color:var(--out)}
+#result.warn{background:#fff6dc;color:var(--warn)}
+#result.bad{background:#fde7e7;color:var(--bad)}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px;font-size:13px;color:var(--muted)}
+select,button,input{font:inherit;font-size:14px;padding:7px 12px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--ink)}
+button{cursor:pointer}
+h2{font-size:16px;margin:0 0 10px}
+h2 span{font-weight:400;color:var(--muted);font-size:13px}
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px}
+.stat{background:#f6f8fa;border-radius:10px;padding:10px;text-align:center}
+.stat b{display:block;font-size:24px}
+.stat small{color:var(--muted);font-size:12px}
+.stat.warn b{color:var(--warn)}
+.tablewrap{max-height:460px;overflow:auto;border:1px solid var(--line);border-radius:10px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{position:sticky;top:0;background:#f6f8fa;font-size:12px;color:var(--muted);font-weight:600}
+tr.flagged td{background:#fff9e6}
+td.fl{color:var(--warn);font-size:12px;white-space:normal}
+.tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600}
+.tag.in{background:#e3f4ea;color:var(--in)}
+.tag.out{background:#fbeae2;color:var(--out)}
+.tag.wait{background:#fff6dc;color:var(--warn)}
+.note{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.6}
+canvas{display:none}
+#setupMsg{display:none;max-width:640px;margin:60px auto;padding:24px;background:#fff;border:1px solid #fecaca;border-radius:12px;line-height:1.7}
+body.nokey main{display:none}
+body.nokey #setupMsg{display:block}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>PTE Clock In / Out</h1>
+    <div class="sub" id="netState">Connecting…</div>
+  </div>
+  <div class="nobuddy" role="note">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#fff" stroke="#d32f2f" stroke-width="3"/><line x1="5" y1="5" x2="19" y2="19" stroke="#d32f2f" stroke-width="3"/></svg>
+    <div><b>STRICTLY PROHIBITED</b><span>Clocking in or out for another person</span></div>
+  </div>
+  <div>
+    <div id="clock">--:--:--</div>
+    <div id="date"></div>
+  </div>
+</header>
+
+<div id="setupMsg">
+  <h2 style="color:#c62828">This tablet is not set up</h2>
+  <p>Please ask HR or Alan for the tablet setup code and paste it below. You only need to do this once.</p>
+  <div class="row" style="color:inherit">
+    <input id="setupCode" style="flex:1;min-width:220px;font-size:16px" placeholder="Tablet setup code" autocomplete="off">
+    <button id="setupBtn" style="font-size:16px">Save</button>
+  </div>
+  <p id="setupResult" style="font-weight:600"></p>
+</div>
+
+<main>
+  <section class="card">
+    <div class="camwrap" id="camwrap">
+      <video id="video" playsinline muted></video>
+      <div class="guide">
+        <div class="face"></div>
+        <div class="frame"><span>Card here</span></div>
+        <div class="hint">Face in the circle, card at chest level</div>
+        <div id="modeBar"><span id="modeText"></span><button id="cancelMode">Cancel</button></div>
+      </div>
+      <div id="chooser">
+        <button class="big-btn in" data-mode="IN">
+          <span class="ico">☀️</span><span class="t1">CLOCK IN</span><span class="t2">Start work</span>
+        </button>
+        <button class="big-btn out" data-mode="OUT">
+          <span class="ico">🏠</span><span class="t1">CLOCK OUT</span><span class="t2">Leave work</span>
+        </button>
+      </div>
+      <div id="flash"></div>
+    </div>
+    <div id="result">
+      <div class="big">Tap Clock In or Clock Out</div>
+      <div class="small">The camera opens when you tap and turns off after you clock (or after 15 seconds without a scan)</div>
+    </div>
+    <div class="row">
+      Camera
+      <select id="camSel"></select>
+      <button id="camBtn">Stop camera</button>
+      <span id="idleLeft"></span>
+    </div>
+    <div class="note">
+      Rules: Tap Clock In when you start work and Clock Out when you leave. If you leave during your shift,
+      Clock Out, then Clock In again when you return. Repeat scans within 60 seconds are ignored.
+      Two Clock Ins in a row, or a Clock Out without a Clock In, are still recorded but flagged for HR to check.
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Recent on this tablet <span id="todayLabel"></span></h2>
+    <div class="stats">
+      <div class="stat"><b id="sScans">0</b><small>Scans today</small></div>
+      <div class="stat warn"><b id="sQueue">0</b><small>Waiting to upload</small></div>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Time</th><th>Name</th><th>Type</th><th>Flag</th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div class="note">Records are saved to the PTE attendance sheet. If the internet is down, they are kept on this tablet and uploaded automatically.</div>
+  </section>
+</main>
+<canvas id="canvas"></canvas>
+<canvas id="snap"></canvas>
+
+<script>
+(function(){
+  // 後端網址（PTE Clock Apps Script 部署）；平板金鑰第一次從設定連結 #k= 帶入後存在本機
+  var API = 'https://script.google.com/macros/s/AKfycbzOXtVVyKR4q9msUbKo80H2MyGYudOdTUf2T29H8ZXn1fu_qkSPSNC-PQk0jMKgjAaS/exec';
+  var KEY_STORE = 'pte_clock_key';
+  var QUEUE_STORE = 'pte_clock_queue_v1';
+  var RECENT_STORE = 'pte_clock_recent_v1';
+  var PHOTO_DELAY_MS = 1500;
+  var IDLE_MS = 15000;
+  var MODE_MS = 15000;
+  var SCAN_MS = 150;
+  var NUDGE_MS = 5000;
+  var SWITCH_MS = 5000;
+  var NET_TIMEOUT_MS = 12000;
+  var CARD_RE = /^PTE\d{4}-[A-Z0-9]{4}$/;
+  var FLAG_TEXT = {
+    NO_OUT: 'Your last Clock In has no Clock Out. Please tell your supervisor.',
+    NO_IN: 'We have no Clock In for you. Please tell your supervisor.'
+  };
+
+  function lsGet(k, d){ try { var v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch(e){ return d; } }
+  function lsSet(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch(e){ return false; } }
+
+  // 金鑰：網址 #k=xxx → 存起來並把網址清乾淨
+  var m = /[#&]k=([A-Za-z0-9]+)/.exec(location.hash);
+  if (m){ lsSet(KEY_STORE, m[1]); history.replaceState(null, '', location.pathname + location.search); }
+  var KEY = lsGet(KEY_STORE, '');
+  if (!KEY) document.body.classList.add('nokey');
+  var DEVICE = lsGet('pte_clock_device', '');
+  if (!DEVICE){ DEVICE = 'tablet-' + Math.random().toString(36).slice(2, 7); lsSet('pte_clock_device', DEVICE); }
+
+  var video = document.getElementById('video');
+  var canvas = document.getElementById('canvas');
+  var ctx = canvas.getContext('2d', { willReadFrequently: true });
+  var snap = document.getElementById('snap');
+  var camSel = document.getElementById('camSel');
+  var camwrap = document.getElementById('camwrap');
+  var resultEl = document.getElementById('result');
+  var stream = null, loopId = 0, idleAt = 0, mode = null, modeAt = 0, busy = false;
+  var lastText = '', lastTextAt = 0, resetTimer = null, lastShowAt = 0;
+
+  function pad(n){ return (n < 10 ? '0' : '') + n; }
+  function dayKey(d){ return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()); }
+  function hms(d){ return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()); }
+  function touchIdle(){ idleAt = Date.now() + IDLE_MS; }
+  function uid(){ return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10); }
+
+  /* ---------- 後端 ---------- */
+  function post(body){
+    body.key = KEY;
+    var ctl = window.AbortController ? new AbortController() : null;
+    var t = setTimeout(function(){ if (ctl) ctl.abort(); }, NET_TIMEOUT_MS);
+    return fetch(API, { method: 'POST', body: JSON.stringify(body), signal: ctl ? ctl.signal : undefined, redirect: 'follow' })
+      .then(function(r){ clearTimeout(t); if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .catch(function(e){ clearTimeout(t); e.network = true; throw e; });
+  }
+
+  /* ---------- 斷網佇列 ---------- */
+  function queue(){ return lsGet(QUEUE_STORE, []); }
+  function setQueue(q){ return lsSet(QUEUE_STORE, q); }
+  var flushing = false;
+  function flush(){
+    if (flushing || !KEY) return;
+    var q = queue();
+    if (!q.length){ net(true); return; }
+    flushing = true;
+    var it = q[0];
+    var p = it.uploaded ? Promise.resolve({ ok: true }) :
+      post({ action: 'clock', card: it.card, type: it.type, rid: it.rid, ts: it.ts, offline: true, device: DEVICE });
+    p.then(function(res){
+      if (!res.ok && res.code !== 'DUP'){
+        // 後端拒收（例如舊卡）：記到最近紀錄讓人資看到，不再重送
+        markRecent(it.rid, { flag: 'REJECTED: ' + (res.msg || res.code) });
+        return 'drop';
+      }
+      if (res.ok) markRecent(it.rid, { name: res.name, flag: res.flag || '', type: res.type, wait: false });
+      if (it.photo) return post({ action: 'photo', rid: it.rid, data: it.photo }).then(function(){ return 'drop'; });
+      return 'drop';
+    }).then(function(){
+      var q2 = queue(); if (q2.length && q2[0].rid === it.rid){ q2.shift(); setQueue(q2); }
+      flushing = false; render(); flush();
+    }).catch(function(){
+      flushing = false; net(false);
+    });
+  }
+  setInterval(flush, 30000);
+  window.addEventListener('online', flush);
+
+  function net(ok){
+    var n = queue().length;
+    document.getElementById('netState').textContent = ok
+      ? 'Online ・ Records go to the PTE attendance sheet'
+      : 'No internet ・ ' + n + ' record(s) kept on this tablet, will upload automatically';
+  }
+
+  /* ---------- 最近紀錄（只放這台平板今天的） ---------- */
+  function recent(){ return lsGet(RECENT_STORE, []); }
+  function addRecent(o){
+    var r = recent().filter(function(x){ return x.day === dayKey(new Date()); });
+    r.push(o); if (r.length > 60) r = r.slice(-60); lsSet(RECENT_STORE, r);
+  }
+  function markRecent(rid, patch){
+    var r = recent();
+    r.forEach(function(x){ if (x.rid === rid) for (var k in patch) x[k] = patch[k]; });
+    lsSet(RECENT_STORE, r);
+  }
+  function render(){
+    var today = dayKey(new Date());
+    var rows = recent().filter(function(x){ return x.day === today; }).reverse();
+    var tb = document.getElementById('tbody'); tb.innerHTML = '';
+    rows.slice(0, 30).forEach(function(r){
+      var tr = document.createElement('tr');
+      if (r.flag) tr.className = 'flagged';
+      var a = document.createElement('td'); a.textContent = r.time;
+      var b = document.createElement('td'); b.textContent = r.name || r.id;
+      var c = document.createElement('td');
+      c.innerHTML = r.wait ? '<span class="tag wait">' + (r.type === 'IN' ? 'Clock In' : 'Clock Out') + ' ・ waiting</span>'
+        : (r.type === 'IN' ? '<span class="tag in">Clock In</span>' : '<span class="tag out">Clock Out</span>');
+      var d = document.createElement('td'); d.className = 'fl';
+      d.textContent = !r.flag ? '' : r.flag === 'NO_OUT' ? 'Missing Clock Out' : r.flag === 'NO_IN' ? 'Missing Clock In' : r.flag;
+      tr.appendChild(a); tr.appendChild(b); tr.appendChild(c); tr.appendChild(d);
+      tb.appendChild(tr);
+    });
+    document.getElementById('sScans').textContent = rows.length;
+    document.getElementById('sQueue').textContent = queue().length;
+    document.getElementById('todayLabel').textContent = today;
+  }
+
+  /* ---------- 時鐘＋自動關鏡頭 ---------- */
+  function tick(){
+    var d = new Date();
+    document.getElementById('clock').textContent = hms(d);
+    document.getElementById('date').textContent = dayKey(d) + ' ' + ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()];
+    if (mode && !busy){
+      var waited = Date.now() - modeAt;
+      var leftS = Math.max(0, Math.ceil((MODE_MS - waited) / 1000));
+      if (waited > MODE_MS){
+        setMode(null, true);
+        failSound();
+        show('bad', '✖ Not clocked: no card detected', '', 'Please tap Clock In or Clock Out and try again');
+      } else if (Date.now() - lastShowAt < 3000){
+        // 剛顯示過錯誤訊息，先讓員工看清楚
+      } else if (waited > NUDGE_MS){
+        showWaiting('warn', 'Card not read yet', 'Move the card closer, hold it still and avoid glare ・ ' + leftS + ' s left');
+      } else {
+        showWaiting('', 'Waiting for your card', 'NOT clocked yet ・ Hold your card in the yellow box ・ ' + leftS + ' s left');
+      }
+    }
+    var left = document.getElementById('idleLeft');
+    if (stream){
+      var s = Math.ceil((idleAt - Date.now()) / 1000);
+      if (s <= 0 && !busy && !mode) stopCam();
+      else left.textContent = 'Auto off in ' + Math.max(s, 0) + ' s';
+    } else left.textContent = '';
+  }
+  setInterval(tick, 1000); tick();
+
+  /* ---------- 聲音 ---------- */
+  var actx = null;
+  function beep(freq, ms){
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      var o = actx.createOscillator(), g = actx.createGain();
+      o.frequency.value = freq; o.connect(g); g.connect(actx.destination);
+      g.gain.setValueAtTime(0.25, actx.currentTime);
+      o.start(); o.stop(actx.currentTime + ms/1000);
+    } catch(e){}
+  }
+  // 祖魯語語音：先播同資料夾 ok.mp3／fail.mp3，沒有就用瀏覽器的祖魯語語音，都沒有就只有提示音
+  var ZULU = { ok: { file: 'ok.mp3', text: 'Kuphumelele' }, fail: { file: 'fail.mp3', text: 'Akuphumelelanga, zama futhi' } };
+  var audioOk = {};
+  function zuluVoice(){
+    if (!window.speechSynthesis) return null;
+    var vs = speechSynthesis.getVoices();
+    for (var i = 0; i < vs.length; i++) if (/^zu/i.test(vs[i].lang)) return vs[i];
+    return null;
+  }
+  if (window.speechSynthesis) speechSynthesis.getVoices();
+  function speakTts(kind){
+    var v = zuluVoice(); if (!v) return;
+    var u = new SpeechSynthesisUtterance(ZULU[kind].text);
+    u.voice = v; u.lang = v.lang; u.rate = 0.95;
+    speechSynthesis.cancel(); speechSynthesis.speak(u);
+  }
+  function say(kind){
+    if (audioOk[kind] === false){ speakTts(kind); return; }
+    var a = new Audio(ZULU[kind].file);
+    a.onerror = function(){ audioOk[kind] = false; speakTts(kind); };
+    a.play().then(function(){ audioOk[kind] = true; }).catch(function(){
+      if (audioOk[kind] !== true){ audioOk[kind] = false; speakTts(kind); }
+    });
+  }
+  function failSound(){ beep(220, 400); setTimeout(function(){ say('fail'); }, 450); }
+  function okSound(type){
+    if (type === 'IN'){ beep(880, 120); setTimeout(function(){ beep(1320, 160); }, 140); }
+    else { beep(1320, 120); setTimeout(function(){ beep(880, 160); }, 140); }
+    setTimeout(function(){ say('ok'); }, 350);
+  }
+  function warnSound(){ beep(440, 180); setTimeout(function(){ beep(440, 180); }, 260); }
+
+  /* ---------- 畫面 ---------- */
+  // action：{ label, fn, ms } 結果下方的按鈕，ms 後自動失效
+  function show(cls, big, who, small, flag, action){
+    lastShowAt = Date.now();
+    resultEl.className = cls;
+    resultEl.innerHTML = '<div class="big"></div><div class="who"></div><div class="small"></div><div class="flag"></div>';
+    resultEl.children[0].textContent = big;
+    resultEl.children[1].textContent = who || '';
+    resultEl.children[2].textContent = small || '';
+    resultEl.children[3].textContent = flag ? '⚠ ' + flag : '';
+    if (action){
+      var b = document.createElement('button');
+      b.className = 'act';
+      var end = Date.now() + action.ms;
+      var label = function(){ b.textContent = action.label + ' (' + Math.max(0, Math.ceil((end - Date.now()) / 1000)) + ')'; };
+      label();
+      var iv = setInterval(function(){
+        if (!b.isConnected){ clearInterval(iv); return; }
+        if (Date.now() >= end){ clearInterval(iv); b.remove(); return; }
+        label();
+      }, 250);
+      b.onclick = function(){ clearInterval(iv); b.remove(); action.fn(); };
+      resultEl.appendChild(b);
+    }
+    clearTimeout(resetTimer);
+    resetTimer = setTimeout(idleMsg, action ? Math.max(6000, action.ms + 1500) : 6000);
+  }
+  function showWaiting(cls, big, small){
+    clearTimeout(resetTimer);
+    resultEl.className = cls;
+    resultEl.innerHTML = '<div class="big"></div><div class="small"></div>';
+    resultEl.children[0].textContent = big;
+    resultEl.children[1].textContent = small;
+  }
+  function idleMsg(){
+    clearTimeout(resetTimer);
+    if (mode || busy) return;
+    show('', 'Tap Clock In or Clock Out', '',
+      stream ? '' : 'The camera opens when you tap and turns off after you clock (or after 15 seconds without a scan)');
+    clearTimeout(resetTimer);
+  }
+  function setMode(m, keepResult){
+    mode = m; modeAt = Date.now();
+    var bar = document.getElementById('modeBar');
+    if (m){
+      camwrap.classList.add('scan');
+      bar.className = m === 'IN' ? 'in' : 'out';
+      document.getElementById('modeText').textContent = m === 'IN' ? '☀️ CLOCK IN: scan your card' : '🏠 CLOCK OUT: scan your card';
+      lastText = '';
+      showWaiting('', 'Waiting for your card', 'NOT clocked yet ・ Hold your card in the yellow box');
+    } else {
+      camwrap.classList.remove('scan');
+      if (!keepResult) idleMsg();
+    }
+  }
+  function takePhoto(){
+    if (!stream || !video.videoWidth) return '';
+    snap.width = 240; snap.height = 180;
+    var sctx = snap.getContext('2d');
+    sctx.translate(240, 0); sctx.scale(-1, 1);
+    sctx.drawImage(video, 0, 0, 240, 180);
+    sctx.setTransform(1,0,0,1,0,0);
+    return snap.toDataURL('image/jpeg', 0.6).split(',')[1] || '';
+  }
+  function flash(){
+    var f = document.getElementById('flash');
+    f.style.opacity = '0.8';
+    setTimeout(function(){ f.style.opacity = '0'; }, 120);
+  }
+
+  /* ---------- 打卡 ---------- */
+  var switched = {};
+  function clock(raw, type){
+    touchIdle();
+    var card = String(raw || '').trim().toUpperCase();
+    if (!CARD_RE.test(card)){
+      failSound();
+      show('bad', '✖ Not clocked: invalid card', '', 'This is not a PTE clock card. Please use your own card or ask HR.');
+      return;
+    }
+    var rid = uid(), ts = Date.now();
+    busy = true;
+    setMode(null, true);
+    showWaiting('', 'Saving…', 'Please hold on');
+    post({ action: 'clock', card: card, type: type, rid: rid, ts: ts, device: DEVICE }).then(function(res){
+      net(true);
+      if (!res.ok){
+        busy = false;
+        if (res.code === 'DUP'){
+          beep(440, 150);
+          show('warn', 'Already clocked', res.name || '',
+            'Your ' + (res.lastType === 'IN' ? 'Clock In' : 'Clock Out') + ' at ' + res.lastTime + ' is recorded. Scans within 60 seconds are ignored.');
+        } else {
+          failSound();
+          var why = { OLDCARD: ['✖ Not clocked: old card', 'This card was replaced. Please ask HR for your new card.'],
+                      INACTIVE: ['✖ Not clocked: not on the employee list', 'Please ask HR.'],
+                      CARD: ['✖ Not clocked: invalid card', 'This is not a PTE clock card.'],
+                      KEY: ['✖ Not clocked: tablet not set up', 'Please tell HR.'] }[res.code] || ['✖ Not clocked: save failed', 'Please try again. If it happens again, tell HR.'];
+          show('bad', why[0], res.id || '', why[1]);
+        }
+        afterResult();
+        return;
+      }
+      addRecent({ rid: rid, day: dayKey(new Date(ts)), time: res.time, id: res.id, name: res.name, type: res.type, flag: res.flag || '', wait: false });
+      render();
+      resultFor(rid, res.type, res.name + ' ・ ' + res.id, res.time, res.flag, false);
+      later(function(){
+        var photo = takePhoto(); flash();
+        if (photo) post({ action: 'photo', rid: rid, data: photo }).catch(function(){
+          // 照片傳不上去就排進佇列補傳
+          var q = queue(); q.push({ rid: rid, uploaded: true, photo: photo }); setQueue(q); render();
+        });
+        busy = false; touchIdle(); afterResult();
+      });
+    }).catch(function(){
+      // 斷網：先存在平板，之後自動補傳
+      var item = { rid: rid, card: card, type: type, ts: ts, photo: '' };
+      var q = queue(); q.push(item);
+      if (!setQueue(q)){
+        net(false);
+        busy = false; failSound();
+        show('bad', '✖ Not clocked: no internet and tablet storage full', '', 'Please tell HR.');
+        afterResult(); return;
+      }
+      net(false);
+      var t = new Date(ts);
+      addRecent({ rid: rid, day: dayKey(t), time: hms(t), id: card.slice(0, 7), name: card.slice(0, 7), type: type, flag: '', wait: true });
+      render();
+      warnSound();
+      resultFor(rid, type, card.slice(0, 7), hms(t), '', true);
+      later(function(){
+        var photo = takePhoto(); flash();
+        var q2 = queue(); q2.forEach(function(x){ if (x.rid === rid) x.photo = photo; });
+        if (!setQueue(q2)){ q2.forEach(function(x){ if (x.rid === rid) x.photo = ''; }); setQueue(q2); }
+        busy = false; touchIdle(); afterResult();
+      });
+    });
+  }
+
+  function later(fn){ setTimeout(fn, PHOTO_DELAY_MS); }
+  function afterResult(){ if (!mode) stopCam(); }
+
+  function resultFor(rid, type, who, time, flag, offline){
+    var other = type === 'IN' ? 'OUT' : 'IN';
+    var action = (flag || offline) ? null : null;
+    if (flag) action = { label: 'I meant ' + (other === 'IN' ? 'CLOCK IN' : 'CLOCK OUT'), ms: SWITCH_MS, fn: function(){ doSwitch(rid, offline); } };
+    if (offline){
+      show('warn', (type === 'IN' ? 'Clock In' : 'Clock Out') + ' saved on this tablet', who,
+        time + ' ・ No internet now. It will upload automatically. 📸 Look at the camera',
+        '', { label: 'I meant ' + (other === 'IN' ? 'CLOCK IN' : 'CLOCK OUT'), ms: SWITCH_MS, fn: function(){ doSwitch(rid, true); } });
+      return;
+    }
+    if (flag){
+      warnSound();
+      show('warn', (type === 'IN' ? 'Clock In' : 'Clock Out') + ' recorded ⚠', who, time + ' ・ 📸 Look at the camera', FLAG_TEXT[flag], action);
+    } else {
+      okSound(type);
+      show(type === 'IN' ? 'in' : 'out', type === 'IN' ? 'Clock In ✔' : 'Clock Out ✔', who, time + ' ・ 📸 Look at the camera');
+    }
+  }
+
+  function doSwitch(rid, offline){
+    switched[rid] = true;
+    if (offline){
+      var q = queue(), t = '';
+      q.forEach(function(x){ if (x.rid === rid){ x.type = x.type === 'IN' ? 'OUT' : 'IN'; t = x.type; } });
+      setQueue(q); markRecent(rid, { type: t }); render();
+      beep(880, 120);
+      show('warn', 'Changed to ' + (t === 'IN' ? 'Clock In' : 'Clock Out'), '', 'Saved on this tablet, will upload automatically');
+      return;
+    }
+    post({ action: 'switch', rid: rid }).then(function(res){
+      if (!res.ok){ failSound(); show('bad', '✖ Change not saved', '', (res.msg || '') + ' ・ Please tell HR.'); return; }
+      markRecent(rid, { type: res.type, flag: res.flag || '' }); render();
+      if (res.flag){ warnSound(); show('warn', 'Changed to ' + (res.type === 'IN' ? 'Clock In' : 'Clock Out') + ' ⚠', res.name, 'Time ' + res.time + ' ・ The change is recorded for HR', FLAG_TEXT[res.flag]); }
+      else { okSound(res.type); show(res.type === 'IN' ? 'in' : 'out', 'Changed to ' + (res.type === 'IN' ? 'Clock In ✔' : 'Clock Out ✔'), res.name, 'Time ' + res.time + ' ・ The change is recorded for HR'); }
+    }).catch(function(){ failSound(); show('bad', '✖ Change not saved: no internet', '', 'Please tell HR.'); });
+  }
+
+  /* ---------- 鏡頭 ---------- */
+  function scanLoop(){
+    if (!stream) return;
+    if (mode && !busy && video.readyState === video.HAVE_ENOUGH_DATA){
+      var w = 640, h = Math.round(640 * video.videoHeight / video.videoWidth) || 480;
+      canvas.width = w; canvas.height = h;
+      ctx.drawImage(video, 0, 0, w, h);
+      var img = ctx.getImageData(0, 0, w, h);
+      var code = jsQR(img.data, w, h, { inversionAttempts: 'dontInvert' });
+      if (code && code.data){
+        var t = Date.now();
+        if (code.data !== lastText || t - lastTextAt > 3000){
+          lastText = code.data; lastTextAt = t;
+          clock(code.data, mode);
+        } else { lastTextAt = t; }
+      }
+    }
+    loopId = setTimeout(scanLoop, SCAN_MS);
+  }
+  function listCams(){
+    return navigator.mediaDevices.enumerateDevices().then(function(devs){
+      var cams = devs.filter(function(d){ return d.kind === 'videoinput'; });
+      var cur = camSel.value || lsGet('pte_clock_cam', '');
+      camSel.innerHTML = '';
+      cams.forEach(function(c, i){
+        var o = document.createElement('option');
+        o.value = c.deviceId; o.textContent = c.label || ('Camera ' + (i+1));
+        camSel.appendChild(o);
+      });
+      if (cur) camSel.value = cur;
+    });
+  }
+  function startCam(){
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      failSound(); show('bad', 'Not clocked: camera not supported', '', 'Please open this page in Google Chrome');
+      return Promise.reject();
+    }
+    if (stream) stream.getTracks().forEach(function(t){ t.stop(); });
+    var c = { width: { ideal: 1280 }, height: { ideal: 720 } };
+    var saved = camSel.value || lsGet('pte_clock_cam', '');
+    if (saved) c.deviceId = { ideal: saved }; else c.facingMode = 'user';
+    return navigator.mediaDevices.getUserMedia({ video: c, audio: false }).then(function(s){
+      stream = s; video.srcObject = s; video.play();
+      touchIdle();
+      clearTimeout(loopId);
+      loopId = setTimeout(scanLoop, SCAN_MS);
+      listCams();
+    }).catch(function(e){
+      setMode(null);
+      failSound();
+      show('bad', 'Not clocked: camera cannot open', e && e.name, 'Allow camera access in the address bar, or tell HR');
+      throw e;
+    });
+  }
+  function stopCam(){
+    clearTimeout(loopId);
+    if (stream) stream.getTracks().forEach(function(t){ t.stop(); });
+    stream = null;
+    video.srcObject = null;
+    setMode(null, true);
+    document.getElementById('idleLeft').textContent = '';
+    if (Date.now() - lastShowAt > 3000) idleMsg();
+  }
+
+  [].forEach.call(document.querySelectorAll('.big-btn'), function(b){
+    b.onclick = function(){
+      if (busy) return;
+      touchIdle();
+      setMode(b.getAttribute('data-mode'));
+      if (!stream) startCam().catch(function(){});
+    };
+  });
+  document.getElementById('cancelMode').onclick = function(){ setMode(null); };
+  document.getElementById('camBtn').onclick = stopCam;
+  camSel.onchange = function(){ lsSet('pte_clock_cam', camSel.value); if (stream) startCam().catch(function(){}); };
+
+  if (typeof jsQR !== 'function'){
+    show('bad', 'Scanner failed to load', '', 'Check the internet connection and reload the page');
+  }
+  // 本機 HTML 檔開啟時沒有設定連結可用：貼設定碼，先跟後端核對再存
+  document.getElementById('setupBtn').onclick = function(){
+    var code = document.getElementById('setupCode').value.replace(/\s+/g, '');
+    var out = document.getElementById('setupResult');
+    if (!/^[A-Za-z0-9]{16,64}$/.test(code)){ out.style.color = '#c62828'; out.textContent = 'This does not look like a setup code.'; return; }
+    out.style.color = ''; out.textContent = 'Checking…';
+    var keep = KEY; KEY = code;
+    post({ action: 'ping' }).then(function(r){
+      if (!r.ok){ KEY = keep; out.style.color = '#c62828'; out.textContent = 'Wrong setup code. Please check and try again.'; return; }
+      lsSet(KEY_STORE, code);
+      document.body.classList.remove('nokey');
+      net(true); render(); flush();
+    }).catch(function(){ KEY = keep; out.style.color = '#c62828'; out.textContent = 'No internet. Please connect and try again.'; });
+  };
+
+  render();
+  if (KEY){
+    post({ action: 'ping' }).then(function(r){ net(!!r.ok); if (!r.ok) document.body.classList.add('nokey'); flush(); })
+      .catch(function(){ net(false); });
+  }
+  if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) listCams().catch(function(){});
+})();
+</script>
+</body>
+</html>
