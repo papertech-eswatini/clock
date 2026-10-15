@@ -185,7 +185,8 @@ body.nokey #setupMsg{display:block}
   var SCAN_MS = 150;
   var NUDGE_MS = 5000;
   var SWITCH_MS = 5000;
-  var NET_TIMEOUT_MS = 12000;
+  var NET_TIMEOUT_MS = 25000;      // Google 後端閒置後第一次可能要 10 秒以上
+  var WARM_MS = 4 * 60 * 1000;     // 每 4 分鐘連一下後端，讓打卡時回應快
   var CARD_RE = /^PTE\d{4}-[A-Z0-9]{4}$/;
   var FLAG_TEXT = {
     NO_OUT: 'Your last Clock In has no Clock Out. Please tell your supervisor.',
@@ -650,6 +651,10 @@ body.nokey #setupMsg{display:block}
     post({ action: 'ping' }).then(function(r){ net(!!r.ok); if (!r.ok) document.body.classList.add('nokey'); flush(); })
       .catch(function(){ net(false); });
   }
+  setInterval(function(){
+    if (!KEY || busy) return;
+    post({ action: 'ping' }).then(function(r){ if (r.ok){ net(true); flush(); } }).catch(function(){ net(false); });
+  }, WARM_MS);
   if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) listCams().catch(function(){});
 })();
 </script>
