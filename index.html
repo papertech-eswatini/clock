@@ -3,43 +3,55 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0d1f33">
+<meta name="theme-color" content="#0a1628">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png">
 <title>PTE Clock</title>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <style>
-/* 打卡機畫面：整頁剛好一個螢幕、不捲動；清單與設定只在 ?setup 顯示 */
+/* PTE 打卡機（10/16 Alan 定的質感版）：深藍＋香檳金＋牛皮紙箱。
+   省電：背景與瓦楞紋都是靜態 CSS 漸層（不用圖片、不用 backdrop-filter 模糊）；動畫只用 transform／opacity，
+   只有兩個圖示光圈在呼吸，變暗、刷卡、設定碼畫面時全部暫停。整頁剛好一個螢幕；清單與設定只在 ?setup 顯示。 */
 :root{
-  --bg:#0d1f33; --panel:#14304d; --ink:#1d2733; --muted:#6b7785; --line:#e1e6eb;
-  --in:#1e9e57; --in2:#137a41; --out:#d9632f; --out2:#b0461a; --warn:#b8860b; --bad:#c62828;
+  --navy:#0a1628; --navy2:#12233b; --navy3:#1b3150; --gold:#d8b878; --gold2:#b48f55; --gold3:#f3dfb3; --kraft:#b98a5a;
+  --ink:#1d2733; --muted:#6b7785; --line:#e1e6eb; --ok:#5fd394; --warn:#f0c060; --bad:#ff7b7b;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%}
-body{margin:0;background:var(--bg);color:#fff;overflow:hidden;overscroll-behavior:none;
+body{margin:0;color:#fff;overflow:hidden;overscroll-behavior:none;position:relative;
   -webkit-user-select:none;user-select:none;
   font-family:"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;
-  display:flex;flex-direction:column;height:100vh;height:100dvh}
+  display:flex;flex-direction:column;height:100vh;height:100dvh;background:var(--navy)}
+/* 背景圖 bg.webp（Alan 10/16 用 AI 生的深藍金線＋瓦楞紙板背景，941x1672、82 KB），靜態一張，載入一次 */
+.bgart{position:fixed;inset:0;z-index:0;pointer-events:none;background:#0a1628 url(bg.webp) center/cover no-repeat}
 body.admin{overflow:auto;height:auto;min-height:100dvh}
+body > *{position:relative;z-index:1}
 
-header{flex:none;display:flex;align-items:center;justify-content:space-between;gap:12px;
-  padding:max(14px,env(safe-area-inset-top)) 22px 12px}
-.brand b{display:block;font-size:clamp(18px,3vw,26px);letter-spacing:1.5px}
-.brand span{font-size:clamp(11px,1.6vw,14px);color:#9fb6cf;letter-spacing:.5px}
-.time{text-align:right}
-#clock{font-size:clamp(34px,6.5vw,58px);font-weight:700;font-variant-numeric:tabular-nums;line-height:1}
-#date{font-size:clamp(12px,1.8vw,16px);color:#9fb6cf;margin-top:4px}
+header{flex:none;display:flex;align-items:center;justify-content:space-between;gap:14px;
+  padding:max(16px,env(safe-area-inset-top)) 24px 14px;
+  background:linear-gradient(180deg,rgba(14,30,52,.55),rgba(10,22,40,.35));border-bottom:1px solid rgba(216,184,120,.35);
+  box-shadow:0 6px 24px rgba(0,0,0,.35)}
+.brand{display:flex;align-items:center;gap:14px;min-width:0}
+.brand svg{width:clamp(38px,6vw,54px);height:clamp(38px,6vw,54px);flex:none;fill:none;stroke:var(--gold);stroke-width:1.4;stroke-linejoin:round;stroke-linecap:round}
+.brand b{display:block;font-size:clamp(17px,3vw,26px);letter-spacing:2px;font-weight:700}
+.brand span{display:block;font-size:clamp(9px,1.4vw,12px);color:var(--gold);letter-spacing:2.5px;margin-top:3px}
+.time{text-align:right;padding-left:18px;border-left:1px solid rgba(216,184,120,.45)}
+#date{font-size:clamp(11px,1.7vw,15px);color:var(--gold);letter-spacing:1.5px}
+#clock{font-size:clamp(34px,6.6vw,58px);font-weight:700;font-variant-numeric:tabular-nums;line-height:1.05}
+.slogan{flex:none;padding:16px 28px 0;font-size:clamp(9px,1.4vw,12px);letter-spacing:3px;color:rgba(216,184,120,.85);line-height:1.7}
+.slogan i{display:block;width:34px;height:2px;background:var(--gold);margin-top:6px}
 
-.nobuddy{flex:none;display:flex;align-items:center;justify-content:center;gap:12px;background:#c62828;color:#fff;
-  padding:9px 16px;margin:0 16px;border-radius:12px}
-.nobuddy svg{width:34px;height:34px;flex:none}
-.nobuddy b{font-size:clamp(15px,2.4vw,20px);letter-spacing:1px}
-.nobuddy span{font-size:clamp(12px,1.8vw,15px);opacity:.92;margin-left:6px}
+.nobuddy{flex:none;display:flex;align-items:center;justify-content:center;gap:12px;color:#fff;
+  margin:12px 18px 0;padding:8px 16px;border-radius:12px;background:rgba(198,40,40,.92);border:1px solid rgba(255,160,160,.55)}
+.nobuddy svg{width:30px;height:30px;flex:none}
+.nobuddy b{font-size:clamp(14px,2.3vw,19px);letter-spacing:1.5px}
+.nobuddy span{font-size:clamp(11px,1.7vw,14px);opacity:.92;margin-left:6px}
 
-main{flex:1;min-height:0;display:flex;flex-direction:column;gap:14px;padding:14px 16px}
+main{flex:1;min-height:0;display:flex;flex-direction:column;gap:16px;padding:16px 18px 12px}
 body.admin main{flex:none}
-.camwrap{position:relative;flex:1;min-height:0;background:var(--panel);border-radius:22px;overflow:hidden}
+.camwrap{position:relative;flex:1;min-height:0;border-radius:24px;overflow:hidden}
+.camwrap.scan{background:#000;border:1px solid rgba(216,184,120,.5)}
 body.admin .camwrap{flex:none;height:62vh}
 video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;transform:scaleX(-1)}
 .guide{display:none}
@@ -50,55 +62,88 @@ video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:
   border:3px dashed rgba(255,214,0,.9);border-radius:16px;pointer-events:none}
 .frame span{position:absolute;top:-26px;left:0;right:0;text-align:center;color:#ffd600;font-size:15px;text-shadow:0 1px 3px #000}
 .hint{position:absolute;left:0;right:0;bottom:12px;text-align:center;color:#fff;font-size:clamp(13px,2.2vw,18px);text-shadow:0 1px 3px #000}
-#modeBar{position:absolute;left:0;right:0;top:0;padding:14px 16px;color:#fff;font-size:clamp(18px,3.4vw,28px);font-weight:700;
+#modeBar{position:absolute;left:0;right:0;top:0;padding:14px 16px;font-size:clamp(18px,3.4vw,28px);font-weight:700;
   display:flex;align-items:center;justify-content:space-between;gap:8px}
-#modeBar.in{background:rgba(30,158,87,.94)}
-#modeBar.out{background:rgba(217,99,47,.94)}
-#modeBar button{font-size:16px;padding:8px 16px;background:rgba(255,255,255,.95);border:0;border-radius:10px;color:#1d2733}
+#modeBar.in{background:linear-gradient(135deg,var(--gold3),var(--gold) 50%,var(--gold2));color:var(--navy)}
+#modeBar.out{background:rgba(18,35,59,.96);color:#fff;border-bottom:1px solid var(--gold)}
+#modeBar button{font-size:16px;padding:8px 16px;background:rgba(255,255,255,.95);border:0;border-radius:10px;color:var(--ink)}
 
-/* 打卡鈕 B 款（Alan 10/16 選）：門禁機風格大圓鈕，外圈慢慢呼吸發光，按下有水波 */
-#chooser{position:absolute;inset:0;display:flex;gap:8px;padding:12px;
-  background:radial-gradient(ellipse at 50% 40%,#1b3d60 0%,var(--panel) 70%)}
+/* 兩張打卡卡片：上班香檳金、下班深藍金邊；圖示外圈金色光圈慢慢呼吸；按下有水波、會下沉 */
+#chooser{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;gap:18px}
+#chooser .big-btn{max-height:min(30vh,300px)}
 .camwrap.scan #chooser{display:none}
-@media (orientation:portrait){#chooser{flex-direction:column}}
-.big-btn{flex:1;min-height:0;border:0;background:none;padding:0;cursor:pointer;font:inherit;color:#fff;
-  display:flex;align-items:center;justify-content:center;container-type:size}
-.orb{--c1:#2bd17a;--c2:#0e7a43;--ring:94,230,160;position:relative;width:min(78cqh,78cqw);aspect-ratio:1/1;border-radius:50%;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.2cqmin;overflow:visible;
-  background:radial-gradient(circle at 32% 26%,rgba(255,255,255,.35) 0,rgba(255,255,255,0) 38%),radial-gradient(circle at 50% 60%,var(--c1),var(--c2) 72%);
-  box-shadow:0 0 0 4px rgba(var(--ring),.9),0 0 0 12px rgba(var(--ring),.18),0 18px 40px rgba(0,0,0,.45),inset 0 -10px 24px rgba(0,0,0,.25);
-  overflow:hidden;transition:transform .12s ease}
-.big-btn.out .orb{--c1:#ff8a4c;--c2:#b8431a;--ring:255,160,110}
-.big-btn:active .orb{transform:scale(.96)}
-.orb svg{width:24cqmin;height:24cqmin;stroke:#fff;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;opacity:.95}
-.orb .t1{font-size:9cqmin;font-weight:800;letter-spacing:.12em;line-height:1;text-shadow:0 2px 6px rgba(0,0,0,.3)}
-.orb .t2{font-size:4.6cqmin;opacity:.9;letter-spacing:.05em}
-/* 呼吸外圈放在圓鈕外面（圓鈕要 overflow:hidden 才能裁水波） */
-.halo{position:absolute;width:min(78cqh,78cqw);aspect-ratio:1/1;border-radius:50%;pointer-events:none}
-.halo::before,.halo::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:3px solid rgba(94,230,160,.6);animation:breathe 3.2s ease-out infinite}
-.halo::after{animation-delay:1.6s}
-.big-btn.out .halo::before,.big-btn.out .halo::after{border-color:rgba(255,160,110,.6)}
-@keyframes breathe{0%{transform:scale(1);opacity:.8}100%{transform:scale(1.2);opacity:0}}
+.big-btn{position:relative;flex:1;min-height:0;border:0;padding:0;background:none;cursor:pointer;font:inherit;display:flex;container-type:size}
+.orb{position:relative;flex:1;display:flex;align-items:center;gap:5cqw;padding:0 6cqw;border-radius:20px;overflow:hidden;text-align:left;
+  transition:transform .12s ease,filter .12s ease}
+/* 上班卡：香檳金拉絲金屬＋斜向反光＋底下一圈金光 */
+.big-btn.in .orb{color:#0b1a30;border:1px solid rgba(255,238,205,.85);
+  background:
+    linear-gradient(118deg,rgba(255,255,255,0) 22%,rgba(255,250,235,.55) 38%,rgba(255,255,255,0) 52%),
+    repeating-linear-gradient(90deg,rgba(255,255,255,.07) 0 1px,rgba(0,0,0,.035) 1px 3px),
+    linear-gradient(160deg,#f7e7c3 0%,#e7c993 30%,#d2ad72 62%,#b38c55 100%);
+  box-shadow:0 0 0 1px rgba(255,236,200,.25),0 12px 34px rgba(0,0,0,.5),0 0 60px rgba(222,186,120,.28),inset 0 1px 0 rgba(255,255,255,.8),inset 0 -2px 6px rgba(120,80,30,.25)}
+.big-btn.in::after{content:"";position:absolute;left:12%;right:12%;bottom:-14px;height:26px;border-radius:50%;
+  background:radial-gradient(ellipse,rgba(240,205,140,.55),rgba(240,205,140,0) 70%);pointer-events:none}
+/* 下班卡：深藍玻璃＋金色細框 */
+.big-btn.out .orb{color:#fff;border:1px solid rgba(216,184,120,.65);
+  background:
+    linear-gradient(118deg,rgba(255,255,255,0) 25%,rgba(255,255,255,.06) 40%,rgba(255,255,255,0) 55%),
+    linear-gradient(160deg,rgba(30,52,84,.94) 0%,rgba(15,30,52,.94) 100%);
+  box-shadow:0 12px 34px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.1),inset 0 0 30px rgba(216,184,120,.06)}
+.big-btn:active .orb{transform:scale(.985) translateY(2px);filter:brightness(.94)}
+.icon{position:relative;flex:none;width:min(48cqh,22cqw);height:min(48cqh,22cqw);border-radius:50%;
+  display:flex;align-items:center;justify-content:center}
+.icon .ring{position:absolute;inset:0;width:100%;height:100%;fill:none;transform:rotate(-30deg)}
+.icon .ring circle{stroke-width:2.2;stroke-linecap:round}
+.big-btn.in .ring .arc{stroke:#0b1a30;stroke-opacity:.8}
+.big-btn.in .ring .rest{stroke:#0b1a30;stroke-opacity:.15}
+.big-btn.out .ring .arc{stroke:var(--gold)}
+.big-btn.out .ring .rest{stroke:var(--gold);stroke-opacity:.18}
+.icon .ring .dot{stroke:none;fill:#fff6df}
+.big-btn.in .ring .dot{fill:#0b1a30}
+.icon .glyph{width:50%;height:50%;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.big-btn.out .icon .glyph{stroke:var(--gold)}
+.halo{position:absolute;inset:-2px;border-radius:50%;pointer-events:none}
+.halo::before,.halo::after{content:"";position:absolute;inset:0;border-radius:50%;border:2px solid rgba(10,22,40,.4);animation:breathe 3.6s ease-out infinite}
+.big-btn.out .halo::before,.big-btn.out .halo::after{border-color:rgba(216,184,120,.65)}
+.halo::after{animation-delay:1.8s}
+@keyframes breathe{0%{transform:scale(1);opacity:.85}100%{transform:scale(1.3);opacity:0}}
+.divider{flex:none;width:1px;align-self:stretch;margin:24cqh 0;background:currentColor;opacity:.3}
+.big-btn.out .divider{background:var(--gold);opacity:.6}
+.txt{min-width:0;flex:1}
+.t1{display:block;font-size:min(30cqh,9.5cqw);font-weight:800;line-height:1.02;letter-spacing:-.01em;white-space:nowrap}
+.t2{display:block;font-size:min(9cqh,3.3cqw);margin-top:2.5cqh;opacity:.85;letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.big-btn.out .t2{color:#e9dcc3;opacity:1}
+.chev{flex:none;width:min(14cqh,6cqw);height:min(14cqh,6cqw);fill:none;stroke:currentColor;stroke-width:1.6;opacity:.7}
+.big-btn.out .chev{stroke:var(--gold);opacity:1}
 .ripple{position:absolute;border-radius:50%;background:rgba(255,255,255,.45);transform:scale(0);animation:ripple .6s ease-out forwards;pointer-events:none}
 @keyframes ripple{to{transform:scale(1);opacity:0}}
 #flash{position:absolute;inset:0;background:#fff;opacity:0;transition:opacity .12s;pointer-events:none}
 
-#result{flex:none;border-radius:20px;padding:18px 20px;text-align:center;min-height:clamp(120px,17vh,190px);
-  display:flex;flex-direction:column;justify-content:center;background:#fff;color:var(--ink);transition:background .2s}
+/* 下方提示／結果框：金色細框的深藍玻璃面板；待機時顯示鏡頭圖示加大寫說明 */
+#result{flex:none;border-radius:22px;padding:16px 20px;text-align:center;min-height:clamp(120px,17vh,190px);
+  display:flex;flex-direction:column;justify-content:center;align-items:center;color:#fff;
+  background:rgba(10,22,40,.42);border:1px solid rgba(216,184,120,.55);transition:background .2s,border-color .2s}
+#result:not([class])::before,#result[class=""]::before{content:"";width:44px;height:30px;margin-bottom:10px;opacity:.95;
+  background:no-repeat center/contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 30' fill='none' stroke='%23d8b878' stroke-width='1.6' stroke-linecap='round'%3E%3Crect x='13' y='7' width='18' height='16' rx='3'/%3E%3Ccircle cx='22' cy='15' r='4'/%3E%3Cpath d='M8 6a12 12 0 0 0 0 18M3 2a18 18 0 0 0 0 26M36 6a12 12 0 0 1 0 18M41 2a18 18 0 0 1 0 26'/%3E%3C/svg%3E")}
+#result:not([class]) .big,#result[class=""] .big{font-size:clamp(17px,2.8vw,24px);letter-spacing:3px;text-transform:uppercase;font-weight:600}
+#result:not([class]) .small,#result[class=""] .small{text-transform:uppercase;letter-spacing:2px;color:rgba(216,184,120,.9)}
 #result .big{font-size:clamp(26px,4.4vw,42px);font-weight:800}
 #result .who{font-size:clamp(20px,3.2vw,30px);margin-top:4px;font-weight:600}
-#result .small{font-size:clamp(14px,2vw,18px);color:var(--muted);margin-top:6px}
+#result .small{font-size:clamp(12px,1.9vw,17px);color:#c9d3df;margin-top:6px}
 #result .flag{font-size:clamp(15px,2.2vw,20px);color:var(--warn);margin-top:6px;font-weight:700}
 #result .act{margin:12px auto 0;font-size:20px;font-weight:700;padding:12px 24px;border-radius:12px;
-  border:2px solid currentColor;background:#fff;color:inherit}
-#result.warn .big{color:#8a6100}
-#result.in{background:#e3f4ea;color:var(--in2)}
-#result.out{background:#fbeae2;color:var(--out2)}
-#result.warn{background:#fff6dc;color:var(--warn)}
-#result.bad{background:#fde7e7;color:var(--bad)}
+  border:2px solid currentColor;background:transparent;color:inherit}
+#result.in,#result.out{background:rgba(24,78,52,.85);border-color:var(--ok)}
+#result.in .big,#result.out .big{color:var(--ok)}
+#result.warn{background:rgba(92,68,16,.85);border-color:var(--warn)}
+#result.warn .big{color:var(--warn)}
+#result.bad{background:rgba(96,22,22,.88);border-color:var(--bad)}
+#result.bad .big{color:var(--bad)}
 
-footer{flex:none;display:flex;justify-content:space-between;gap:12px;padding:0 20px max(10px,env(safe-area-inset-bottom));
-  font-size:13px;color:#7f98b3}
+footer{flex:none;display:flex;justify-content:space-between;align-items:center;gap:12px;
+  padding:2px 24px max(12px,env(safe-area-inset-bottom));font-size:12px;color:#7f98b3}
+footer .motto{letter-spacing:3px;color:rgba(216,184,120,.8);font-size:11px}
 
 .admin-only{display:none!important}
 body.admin .admin-only{display:block!important}
@@ -114,17 +159,17 @@ h2 span{font-weight:400;color:var(--muted);font-size:13px}
 .stat{background:#f6f8fa;border-radius:10px;padding:10px;text-align:center}
 .stat b{display:block;font-size:24px}
 .stat small{color:var(--muted);font-size:12px}
-.stat.warn b{color:var(--warn)}
+.stat.warn b{color:#b8860b}
 .tablewrap{max-height:460px;overflow:auto;border:1px solid var(--line);border-radius:10px}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
 th{position:sticky;top:0;background:#f6f8fa;font-size:12px;color:var(--muted);font-weight:600}
 tr.flagged td{background:#fff9e6}
-td.fl{color:var(--warn);font-size:12px;white-space:normal}
+td.fl{color:#b8860b;font-size:12px;white-space:normal}
 .tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600}
-.tag.in{background:#e3f4ea;color:var(--in)}
-.tag.out{background:#fbeae2;color:var(--out)}
-.tag.wait{background:#fff6dc;color:var(--warn)}
+.tag.in{background:#e3f4ea;color:#1e8e4e}
+.tag.out{background:#fbeae2;color:#c0582b}
+.tag.wait{background:#fff6dc;color:#b8860b}
 .note{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.6}
 canvas{display:none}
 #setupMsg{display:none;max-width:640px;margin:40px auto;padding:24px;background:#fff;color:var(--ink);border-radius:16px;line-height:1.7;-webkit-user-select:text;user-select:text}
@@ -135,17 +180,25 @@ canvas{display:none}
 body.asleep #sleep{display:flex}
 #sClock{font-size:clamp(56px,14vw,140px);font-weight:700;font-variant-numeric:tabular-nums;line-height:1}
 #sDate{font-size:clamp(16px,3vw,26px)}
-#sleep .tap{margin-top:28px;font-size:clamp(20px,4vw,36px);color:#9fb6cf;animation:pulse 2.4s ease-in-out infinite}
+#sleep .tap{margin-top:28px;font-size:clamp(20px,4vw,36px);color:var(--gold);animation:pulse 2.4s ease-in-out infinite}
 @keyframes pulse{50%{opacity:.35}}
+/* 省電：畫面變暗或還沒設定時，停掉卡片動畫 */
+body.asleep .halo::before,body.asleep .halo::after,body.nokey .halo::before,body.nokey .halo::after{animation-play-state:paused}
+@media (prefers-reduced-motion:reduce){.halo::before,.halo::after{animation:none}}
 body.nokey main,body.nokey footer{display:none}
 body.nokey #setupMsg{display:block}
 </style>
 </head>
 <body>
+<div class="bgart"></div>
 <header>
-  <div class="brand"><b>PAPER TECH ESWATINI</b><span>Clock In / Clock Out</span></div>
-  <div class="time"><div id="clock">--:--:--</div><div id="date"></div></div>
+  <div class="brand">
+    <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 4l17 8.5v19L24 44 7 31.5v-19z"/><path d="M7 12.5L24 21l17-8.5"/><path d="M24 21v23"/><path d="M15.5 8.3l17 8.5"/></svg>
+    <div><b>PAPER TECH ESWATINI</b><span>PACKAGING FOR A SUSTAINABLE TOMORROW</span></div>
+  </div>
+  <div class="time"><div id="date"></div><div id="clock">--:--:--</div></div>
 </header>
+<div class="slogan">BETTER PACKAGING<br>A BRIGHTER FUTURE<i></i></div>
 <div class="nobuddy" role="note">
   <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#fff" stroke="#fff" stroke-width="2"/><circle cx="12" cy="12" r="8.5" fill="none" stroke="#c62828" stroke-width="2.6"/><line x1="6" y1="6" x2="18" y2="18" stroke="#c62828" stroke-width="2.6"/></svg>
   <div><b>STRICTLY PROHIBITED</b><span>Clocking in or out for another person</span></div>
@@ -171,13 +224,21 @@ body.nokey #setupMsg{display:block}
       <div id="modeBar"><span id="modeText"></span><button id="cancelMode">Cancel</button></div>
     </div>
     <div id="chooser">
-      <button class="big-btn in" data-mode="IN"><span class="halo"></span>
-        <span class="orb"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.9 7a8 8 0 0 1 1.1 5v1a6 6 0 0 0 .8 3"/><path d="M8 11a4 4 0 0 1 8 0v1a10 10 0 0 0 2 6"/><path d="M12 11v2a14 14 0 0 0 2.5 8"/><path d="M8 15a18 18 0 0 0 1.8 6"/><path d="M4.9 19a22 22 0 0 1 -.9 -7v-1a8 8 0 0 1 12 -6.95"/></svg>
-        <span class="t1">CLOCK IN</span><span class="t2">Start work</span></span>
+      <button class="big-btn in" data-mode="IN">
+        <span class="orb">
+          <span class="icon"><span class="halo"></span><svg class="ring" viewBox="0 0 100 100" aria-hidden="true"><circle class="rest" cx="50" cy="50" r="47"/><circle class="arc" cx="50" cy="50" r="47" pathLength="100" stroke-dasharray="72 28"/><circle class="dot" cx="41.2" cy="3.8" r="3.2"/></svg><svg class="glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21l-8 -4.5v-9l8 -4.5l8 4.5v4.5"/><path d="M12 12l8 -4.5"/><path d="M12 12v9"/><path d="M12 12l-8 -4.5"/><path d="M15 18h7"/><path d="M19 15l3 3l-3 3"/></svg></span>
+          <span class="divider"></span>
+          <span class="txt"><span class="t1">Clock in</span><span class="t2" id="inSub">Start your shift</span></span>
+          <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
+        </span>
       </button>
-      <button class="big-btn out" data-mode="OUT"><span class="halo"></span>
-        <span class="orb"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.9 7a8 8 0 0 1 1.1 5v1a6 6 0 0 0 .8 3"/><path d="M8 11a4 4 0 0 1 8 0v1a10 10 0 0 0 2 6"/><path d="M12 11v2a14 14 0 0 0 2.5 8"/><path d="M8 15a18 18 0 0 0 1.8 6"/><path d="M4.9 19a22 22 0 0 1 -.9 -7v-1a8 8 0 0 1 12 -6.95"/></svg>
-        <span class="t1">CLOCK OUT</span><span class="t2">Leave work</span></span>
+      <button class="big-btn out" data-mode="OUT">
+        <span class="orb">
+          <span class="icon"><span class="halo"></span><svg class="ring" viewBox="0 0 100 100" aria-hidden="true"><circle class="rest" cx="50" cy="50" r="47"/><circle class="arc" cx="50" cy="50" r="47" pathLength="100" stroke-dasharray="72 28"/><circle class="dot" cx="41.2" cy="3.8" r="3.2"/></svg><svg class="glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21l-8 -4.5v-9l8 -4.5l8 4.5v4.5"/><path d="M12 12l8 -4.5"/><path d="M12 12v9"/><path d="M12 12l-8 -4.5"/><path d="M22 18h-7"/><path d="M18 15l-3 3l3 3"/></svg></span>
+          <span class="divider"></span>
+          <span class="txt"><span class="t1">Clock out</span><span class="t2">Thank you · see you next shift</span></span>
+          <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
+        </span>
       </button>
     </div>
     <div id="flash"></div>
@@ -189,6 +250,7 @@ body.nokey #setupMsg{display:block}
 </main>
 <footer>
   <span id="netState">Connecting…</span>
+  <span class="motto">QUALITY / SAFETY / SUSTAINABILITY</span>
   <span id="idleLeft"></span>
 </footer>
 
@@ -366,7 +428,11 @@ body.nokey #setupMsg{display:block}
   function tick(){
     var d = new Date();
     document.getElementById('clock').textContent = hms(d);
-    document.getElementById('date').textContent = dayKey(d) + ' ' + ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()];
+    document.getElementById('date').textContent = ['SUN','MON','TUE','WED','THU','FRI','SAT'][d.getDay()] + ', ' + dayKey(d);
+    // 上班鈕小字：現在時間＋照時段問候（晚班就是 Good evening）
+    var hh = d.getHours();
+    document.getElementById('inSub').textContent = pad(hh) + ':' + pad(d.getMinutes()) + ' · ' +
+      (hh >= 5 && hh < 12 ? 'Good morning' : hh >= 12 && hh < 17 ? 'Good afternoon' : 'Good evening');
     // 鏡頭還沒出畫面前不倒數（5 秒很短，不能被開鏡頭的時間吃掉）
     if (mode && !busy && !(stream && video.readyState >= 2)){ modeAt = Date.now(); touchIdle(); }
     if (mode && !busy){
