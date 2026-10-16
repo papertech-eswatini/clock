@@ -300,7 +300,7 @@ body.nokey #setupMsg{display:block}
     </table>
   </div>
   <div class="row"><button id="faceCsv">Download results (CSV)</button><button id="faceClear">Clear results</button></div>
-  <div class="note">Trial only: staff never see the result and clocking is never blocked. Only enrolled people are checked. Enrol: tap the button, scan the person's card, then the person looks at the camera for about 3 seconds. Faces and results stay on this tablet. Distance: smaller = more alike. "Closest other" is the most similar other enrolled person; if it is often below the match line, lower the line.</div>
+  <div class="note">Trial only: staff never see the result and clocking is never blocked. Only enrolled people are checked. Enrol: tap the button, scan the person's card, then the person looks at the camera for about 3 seconds. Faces stay on this tablet; each result is also written to the Face column of Clock Log (filter "Not match" and check the photo). Distance: smaller = more alike. "Closest other" is the most similar other enrolled person; if it is often below the match line, lower the line.</div>
 </section>
 <section class="panel admin-only">
   <h2>Recent on this tablet <span id="todayLabel"></span></h2>
@@ -392,7 +392,7 @@ body.nokey #setupMsg{display:block}
   function flush(){
     if (flushing || !KEY) return;
     var q = queue();
-    if (!q.length){ net(true); return; }
+    if (!q.length){ net(true); faceFlush(); return; }
     var it = q[0];
     // 有黃字的那筆留 5 秒給員工按「I meant…」，之後才上傳
     if (it.notBefore && it.notBefore > Date.now()){ setTimeout(flush, it.notBefore - Date.now() + 50); return; }
@@ -719,17 +719,18 @@ body.nokey #setupMsg{display:block}
     // 讀到卡當下就拍照，人不用等
     var photo = takePhoto(); flash();
     // 人臉試用：有登錄的人另外留一張大一點的畫面，結果出來後再背景比對
+    var rid = uid();   // 先定紀錄編號，人臉結果才對得到這一筆
     var fimg = faceGrab(card.slice(0, 7));
-    if (fimg) setTimeout(function(){ faceCheck(fimg, card.slice(0, 7)); }, 800);
+    if (fimg) setTimeout(function(){ faceCheck(fimg, card.slice(0, 7), rid); }, 800);
     busy = true;
     setMode(null, true);
     var S = lsGet(SYNC_STORE, null), id = card.slice(0, 7);
     var e = S && S.cards && Date.now() - S.at < SYNC_MAX_AGE ? S.cards[id] : null;
     // 卡片在同步名單裡就當場判斷；不在（新發的卡、沒同步）就等後端判斷，不會誤擋
-    if (!e){ serverClock(card, type, photo); return; }
+    if (!e){ serverClock(card, type, photo, rid); return; }
     sha256(card).then(function(h){
-      if (h === e.h) localClock(card, type, id, e.n, photo); else serverClock(card, type, photo);
-    }).catch(function(){ serverClock(card, type, photo); });
+      if (h === e.h) localClock(card, type, id, e.n, photo, rid); else serverClock(card, type, photo, rid);
+    }).catch(function(){ serverClock(card, type, photo, rid); });
   }
 
   function sha256(s){
@@ -757,7 +758,7 @@ body.nokey #setupMsg{display:block}
   }
 
   // 平板當場判斷：存進佇列、馬上顯示結果，背景再上傳
-  function localClock(card, type, id, name, photo){
+  function localClock(card, type, id, name, photo, rid){
     var ts = Date.now(), last = lastFor(id);
     if (last && ts - last.ts < 60000){
       busy = false; beep(440, 150);
@@ -765,10 +766,11 @@ body.nokey #setupMsg{display:block}
         'Your ' + (last.type === 'IN' ? 'Clock In' : 'Clock Out') + ' at ' + last.time + ' is recorded. Scans within 60 seconds are ignored.');
       afterResult(); return;
     }
-    var flag = flagFor(type, last, ts), rid = uid(), t = new Date(ts);
+    var flag = flagFor(type, last, ts), t = new Date(ts);
+    rid = rid || uid();
     var item = { rid: rid, card: card, type: type, ts: ts, photo: photo, live: true, notBefore: flag ? ts + SWITCH_MS + 500 : 0 };
     var q = queue(); q.push(item);
-    if (!setQueue(q)){ item.photo = ''; if (!setQueue(q)){ serverClock(card, type, photo); return; } }
+    if (!setQueue(q)){ item.photo = ''; if (!setQueue(q)){ serverClock(card, type, photo, rid); return; } }
     addRecent({ rid: rid, day: dayKey(t), time: hms(t), ts: ts, id: id, name: name, type: type, flag: flag, wait: true });
     render();
     busy = false;
@@ -778,8 +780,9 @@ body.nokey #setupMsg{display:block}
   }
 
   // 等後端判斷（沒同步資料、新卡）
-  function serverClock(card, type, photo){
-    var rid = uid(), ts = Date.now();
+  function serverClock(card, type, photo, rid){
+    var ts = Date.now();
+    rid = rid || uid();
     showWaiting('', 'Saving…', 'Please hold on');
     afterResult();
     post({ action: 'clock', card: card, type: type, rid: rid, ts: ts, device: DEVICE }).then(function(res){
@@ -1018,7 +1021,45 @@ body.nokey #setupMsg{display:block}
     c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
     return c;
   }
-  function faceCheck(c, id){
+  // 比對結果寫進 Clock Log「Face」欄（10/16 Alan：試用就先上線，HR 篩 Not match 查照片）
+  var FACEQ_STORE = 'pte_clock_faceq_v1', faceFlushing = false;
+  function faceText(o){
+    var d = function(v){ return ' (' + Number(v).toFixed(2) + ')'; };
+    if (o.res === 'MATCH') return 'Match' + d(o.d);
+    if (o.res === 'NOMATCH') return 'Not match' + d(o.d);
+    if (o.res === 'OTHER') return 'Not match, looks like ' + o.on + d(o.od);
+    return 'No face';
+  }
+  // 等打卡紀錄確定成立（沒在存、最近紀錄裡有這一筆）才排上傳；60 秒內重掃那種沒有紀錄的就不送
+  function faceSend(rid, text, n){
+    n = n || 0;
+    if (busy && n < 30){ setTimeout(function(){ faceSend(rid, text, n + 1); }, 2000); return; }
+    if (!recent().some(function(r){ return r.rid === rid; })) return;
+    var q = lsGet(FACEQ_STORE, []); q.push({ rid: rid, face: text, tries: 0 });
+    lsSet(FACEQ_STORE, q.slice(-200));
+    flush();
+  }
+  // 打卡佇列清空後才送人臉結果（打卡那筆要先進 Clock Log）；找不到那筆就晚點再試，試 10 次放棄
+  function faceFlush(){
+    if (faceFlushing || !KEY) return;
+    var q = lsGet(FACEQ_STORE, []);
+    if (!q.length) return;
+    var it = q[0];
+    faceFlushing = true;
+    post({ action: 'face', rid: it.rid, face: it.face }).then(function(res){
+      var q2 = lsGet(FACEQ_STORE, []), i = -1;
+      q2.forEach(function(x, k){ if (x.rid === it.rid && i < 0) i = k; });
+      if (i >= 0){
+        var x = q2.splice(i, 1)[0];
+        if (!res.ok && res.code === 'NOTFOUND' && ++x.tries < 10){ q2.push(x); lsSet(FACEQ_STORE, q2); faceFlushing = false; return; }
+        lsSet(FACEQ_STORE, q2);
+      }
+      faceFlushing = false; faceFlush();
+    }).catch(function(){ faceFlushing = false; });
+  }
+  setInterval(faceFlush, 30000);
+
+  function faceCheck(c, id, rid){
     var F = faceDb(), me = F.faces[id];
     if (!c || !me) return;
     var t1 = 0;
@@ -1041,6 +1082,7 @@ body.nokey #setupMsg{display:block}
       var L = faceLog(); L.push(o); if (L.length > 200) L = L.slice(-200);
       if (!lsSet(FACELOG_STORE, L)){ L = L.slice(-50); lsSet(FACELOG_STORE, L); }
       renderFace();
+      if (rid) faceSend(rid, faceText(o));
     }).catch(function(){});
   }
 
@@ -1220,7 +1262,7 @@ body.nokey #setupMsg{display:block}
   // 自動更新（Alan 10/16）：每 5 分鐘、以及 App 切回前景時，看 GitHub 上的版本號跟這頁一不一樣；
   // 不一樣就等沒人在打卡（沒在刷卡、沒在存、鏡頭關著、結果訊息已顯示超過 10 秒）再重新整理。
   // 斷網佇列存在平板裡，重新整理不會掉資料。每次上傳新版要把 APP_VER 改掉，平板才會換。
-  var APP_VER = '2026-10-16-2';
+  var APP_VER = '2026-10-16-3';
   var newVer = '';
   function checkUpdate(){
     if (!/^https:/.test(location.protocol)) return;
