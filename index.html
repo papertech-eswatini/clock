@@ -116,6 +116,14 @@ td.fl{color:var(--warn);font-size:12px;white-space:normal}
 canvas{display:none}
 #setupMsg{display:none;max-width:640px;margin:40px auto;padding:24px;background:#fff;color:var(--ink);border-radius:16px;line-height:1.7;-webkit-user-select:text;user-select:text}
 #setupMsg input{-webkit-user-select:text;user-select:text}
+/* 閒置變暗：網頁調不了背光，只能蓋黑色；點一下亮回打卡畫面 */
+#sleep{position:fixed;inset:0;z-index:50;background:#000;color:#6f8399;display:none;
+  flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;cursor:pointer}
+body.asleep #sleep{display:flex}
+#sClock{font-size:clamp(56px,14vw,140px);font-weight:700;font-variant-numeric:tabular-nums;line-height:1}
+#sDate{font-size:clamp(16px,3vw,26px)}
+#sleep .tap{margin-top:28px;font-size:clamp(20px,4vw,36px);color:#9fb6cf;animation:pulse 2.4s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.35}}
 body.nokey main,body.nokey footer{display:none}
 body.nokey #setupMsg{display:block}
 </style>
@@ -195,6 +203,10 @@ body.nokey #setupMsg{display:block}
   </div>
   <div class="note">Rules: Clock In when you start work and Clock Out when you leave. If you leave during your shift, Clock Out, then Clock In again when you return. Repeat scans within 60 seconds are ignored. Two Clock Ins in a row, or a Clock Out without a Clock In, are recorded but flagged for HR.</div>
 </section>
+<div id="sleep">
+  <div id="sClock"></div><div id="sDate"></div>
+  <div class="tap">👆 Tap the screen to Clock In / Clock Out</div>
+</div>
 <canvas id="canvas"></canvas>
 <canvas id="snap"></canvas>
 
@@ -215,6 +227,7 @@ body.nokey #setupMsg{display:block}
   var SWITCH_MS = 5000;
   var NET_TIMEOUT_MS = 25000;      // Google 後端閒置後第一次可能要 10 秒以上
   var WARM_MS = 4 * 60 * 1000;     // 每 4 分鐘連一下後端，讓打卡時回應快
+  var SLEEP_MS = 30000;            // Alan 10/16：沒人用 30 秒變暗，點一下亮
   var CARD_RE = /^PTE\d{4}-[A-Z0-9]{4}$/;
   var FLAG_TEXT = {
     NO_OUT: 'Your last Clock In has no Clock Out. Please tell your supervisor.',
@@ -362,7 +375,21 @@ body.nokey #setupMsg{display:block}
       if (s <= 0 && !busy && !mode) stopCam();
       else left.textContent = 'Auto off in ' + Math.max(s, 0) + ' s';
     } else left.textContent = '';
+    // 閒置變暗：鏡頭關著、沒在打卡、結果也顯示夠久了才暗；?setup 和未設定的平板不暗
+    document.getElementById('sClock').textContent = hms(d).slice(0, 5);
+    document.getElementById('sDate').textContent = document.getElementById('date').textContent;
+    var now = Date.now(), b = document.body.classList;
+    if (!b.contains('asleep') && !b.contains('admin') && !b.contains('nokey') && !stream && !mode && !busy &&
+        now - lastActive > SLEEP_MS && now - lastShowAt > SLEEP_MS) b.add('asleep');
   }
+  var lastActive = Date.now();
+  document.addEventListener('pointerdown', function(){ lastActive = Date.now(); }, true);
+  // 暗的時候這一下只負責叫醒，不會順便按到底下的上班／下班
+  document.getElementById('sleep').addEventListener('click', function(e){
+    e.preventDefault(); e.stopPropagation();
+    lastActive = Date.now();
+    document.body.classList.remove('asleep');
+  });
   setInterval(tick, 1000); tick();
 
   /* ---------- 聲音 ---------- */
