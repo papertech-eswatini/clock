@@ -228,7 +228,7 @@ body.nokey #setupMsg{display:block}
   var NET_TIMEOUT_MS = 25000;      // Google 後端閒置後第一次可能要 10 秒以上
   var WARM_MS = 4 * 60 * 1000;     // 每 4 分鐘連一下後端，讓打卡時回應快
   var SLEEP_MS = 30000;            // Alan 10/16：沒人用 30 秒變暗，點一下亮
-  var CARD_RE = /^PTE\d{4}-[A-Z0-9]{4}$/;
+  var CARD_RE = /^PT[EC]\d{4}-[A-Z0-9]{4}$/;
   var FLAG_TEXT = {
     NO_OUT: 'Your last Clock In has no Clock Out. Please tell your supervisor.',
     NO_IN: 'We have no Clock In for you. Please tell your supervisor.'
