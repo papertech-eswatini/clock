@@ -272,6 +272,7 @@ body.nokey #setupMsg{display:block}
     <button id="voiceTest">▶ Test</button>
   </div>
   <div class="note">Settings are saved on this tablet. Open the normal address (without ?setup) for staff.</div>
+  <div class="note">Page version <b id="appVer"></b></div>
 </section>
 <section class="panel admin-only" id="facePanel">
   <h2>Face check trial</h2>
@@ -1305,13 +1306,19 @@ body.nokey #setupMsg{display:block}
   // 自動更新（Alan 10/16）：每 5 分鐘、以及 App 切回前景時，看 GitHub 上的版本號跟這頁一不一樣；
   // 不一樣就等沒人在打卡（沒在刷卡、沒在存、鏡頭關著、結果訊息已顯示超過 10 秒）再重新整理。
   // 斷網佇列存在平板裡，重新整理不會掉資料。每次上傳新版要把 APP_VER 改掉，平板才會換。
-  var APP_VER = '2026-10-16-4';
+  var APP_VER = '2026-10-16-5';
   var newVer = '';
+  // ?setup 顯示目前版本，發現新版還沒換時也寫出來，一眼確認平板有沒有更新
+  document.getElementById('appVer').textContent = APP_VER;
   function checkUpdate(){
     if (!/^https:/.test(location.protocol)) return;
     fetch(location.pathname + '?v=' + Date.now(), { cache: 'no-store' }).then(function(r){ return r.ok ? r.text() : ''; }).then(function(t){
       var m = /var APP_VER = '([^']+)'/.exec(t || '');
-      if (m && m[1] !== APP_VER) { newVer = m[1]; tryReload(); }
+      if (m && m[1] !== APP_VER) {
+        newVer = m[1];
+        document.getElementById('appVer').textContent = APP_VER + ' (new version ' + newVer + ' found, will update when nobody is clocking)';
+        tryReload();
+      }
     }).catch(function(){});
   }
   function tryReload(){
