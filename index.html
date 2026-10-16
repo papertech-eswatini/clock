@@ -56,18 +56,31 @@ video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:
 #modeBar.out{background:rgba(217,99,47,.94)}
 #modeBar button{font-size:16px;padding:8px 16px;background:rgba(255,255,255,.95);border:0;border-radius:10px;color:#1d2733}
 
-#chooser{position:absolute;inset:0;display:flex;gap:16px;padding:16px;background:var(--panel)}
+/* 打卡鈕 B 款（Alan 10/16 選）：門禁機風格大圓鈕，外圈慢慢呼吸發光，按下有水波 */
+#chooser{position:absolute;inset:0;display:flex;gap:8px;padding:12px;
+  background:radial-gradient(ellipse at 50% 40%,#1b3d60 0%,var(--panel) 70%)}
 .camwrap.scan #chooser{display:none}
 @media (orientation:portrait){#chooser{flex-direction:column}}
-.big-btn{flex:1;border:0;border-radius:20px;color:#fff;cursor:pointer;font:inherit;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
-  box-shadow:0 10px 30px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.25)}
-.big-btn .ico{font-size:clamp(54px,11vw,110px);line-height:1}
-.big-btn .t1{font-size:clamp(30px,6vw,60px);font-weight:800;letter-spacing:2px}
-.big-btn .t2{font-size:clamp(16px,2.8vw,24px);opacity:.9}
-.big-btn.in{background:linear-gradient(160deg,var(--in),var(--in2))}
-.big-btn.out{background:linear-gradient(160deg,var(--out),var(--out2))}
-.big-btn:active{transform:scale(.985);filter:brightness(.95)}
+.big-btn{flex:1;min-height:0;border:0;background:none;padding:0;cursor:pointer;font:inherit;color:#fff;
+  display:flex;align-items:center;justify-content:center;container-type:size}
+.orb{--c1:#2bd17a;--c2:#0e7a43;--ring:94,230,160;position:relative;width:min(78cqh,78cqw);aspect-ratio:1/1;border-radius:50%;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.2cqmin;overflow:visible;
+  background:radial-gradient(circle at 32% 26%,rgba(255,255,255,.35) 0,rgba(255,255,255,0) 38%),radial-gradient(circle at 50% 60%,var(--c1),var(--c2) 72%);
+  box-shadow:0 0 0 4px rgba(var(--ring),.9),0 0 0 12px rgba(var(--ring),.18),0 18px 40px rgba(0,0,0,.45),inset 0 -10px 24px rgba(0,0,0,.25);
+  overflow:hidden;transition:transform .12s ease}
+.big-btn.out .orb{--c1:#ff8a4c;--c2:#b8431a;--ring:255,160,110}
+.big-btn:active .orb{transform:scale(.96)}
+.orb svg{width:24cqmin;height:24cqmin;stroke:#fff;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;opacity:.95}
+.orb .t1{font-size:9cqmin;font-weight:800;letter-spacing:.12em;line-height:1;text-shadow:0 2px 6px rgba(0,0,0,.3)}
+.orb .t2{font-size:4.6cqmin;opacity:.9;letter-spacing:.05em}
+/* 呼吸外圈放在圓鈕外面（圓鈕要 overflow:hidden 才能裁水波） */
+.halo{position:absolute;width:min(78cqh,78cqw);aspect-ratio:1/1;border-radius:50%;pointer-events:none}
+.halo::before,.halo::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:3px solid rgba(94,230,160,.6);animation:breathe 3.2s ease-out infinite}
+.halo::after{animation-delay:1.6s}
+.big-btn.out .halo::before,.big-btn.out .halo::after{border-color:rgba(255,160,110,.6)}
+@keyframes breathe{0%{transform:scale(1);opacity:.8}100%{transform:scale(1.2);opacity:0}}
+.ripple{position:absolute;border-radius:50%;background:rgba(255,255,255,.45);transform:scale(0);animation:ripple .6s ease-out forwards;pointer-events:none}
+@keyframes ripple{to{transform:scale(1);opacity:0}}
 #flash{position:absolute;inset:0;background:#fff;opacity:0;transition:opacity .12s;pointer-events:none}
 
 #result{flex:none;border-radius:20px;padding:18px 20px;text-align:center;min-height:clamp(120px,17vh,190px);
@@ -158,11 +171,13 @@ body.nokey #setupMsg{display:block}
       <div id="modeBar"><span id="modeText"></span><button id="cancelMode">Cancel</button></div>
     </div>
     <div id="chooser">
-      <button class="big-btn in" data-mode="IN">
-        <span class="ico">☀️</span><span class="t1">CLOCK IN</span><span class="t2">Start work</span>
+      <button class="big-btn in" data-mode="IN"><span class="halo"></span>
+        <span class="orb"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.9 7a8 8 0 0 1 1.1 5v1a6 6 0 0 0 .8 3"/><path d="M8 11a4 4 0 0 1 8 0v1a10 10 0 0 0 2 6"/><path d="M12 11v2a14 14 0 0 0 2.5 8"/><path d="M8 15a18 18 0 0 0 1.8 6"/><path d="M4.9 19a22 22 0 0 1 -.9 -7v-1a8 8 0 0 1 12 -6.95"/></svg>
+        <span class="t1">CLOCK IN</span><span class="t2">Start work</span></span>
       </button>
-      <button class="big-btn out" data-mode="OUT">
-        <span class="ico">🏠</span><span class="t1">CLOCK OUT</span><span class="t2">Leave work</span>
+      <button class="big-btn out" data-mode="OUT"><span class="halo"></span>
+        <span class="orb"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.9 7a8 8 0 0 1 1.1 5v1a6 6 0 0 0 .8 3"/><path d="M8 11a4 4 0 0 1 8 0v1a10 10 0 0 0 2 6"/><path d="M12 11v2a14 14 0 0 0 2.5 8"/><path d="M8 15a18 18 0 0 0 1.8 6"/><path d="M4.9 19a22 22 0 0 1 -.9 -7v-1a8 8 0 0 1 12 -6.95"/></svg>
+        <span class="t1">CLOCK OUT</span><span class="t2">Leave work</span></span>
       </button>
     </div>
     <div id="flash"></div>
@@ -558,7 +573,7 @@ body.nokey #setupMsg{display:block}
     if (m){
       camwrap.classList.add('scan');
       bar.className = m === 'IN' ? 'in' : 'out';
-      document.getElementById('modeText').textContent = m === 'IN' ? '☀️ CLOCK IN: scan your card' : '🏠 CLOCK OUT: scan your card';
+      document.getElementById('modeText').textContent = m === 'IN' ? '➜ CLOCK IN: scan your card' : '⇠ CLOCK OUT: scan your card';   // 不用太陽：上班不一定是白天（Alan 10/16，有晚班）
       lastText = '';
       showWaiting('', 'Waiting for your card', 'NOT clocked yet ・ Hold your card in the yellow box');
     } else {
@@ -825,11 +840,22 @@ body.nokey #setupMsg{display:block}
   }
 
   [].forEach.call(document.querySelectorAll('.big-btn'), function(b){
+    // 按下：在手指位置放一圈水波，0.18 秒後才切到刷卡畫面，讓員工看得到按到了
+    b.addEventListener('pointerdown', function(ev){
+      var orb = b.querySelector('.orb'); if (!orb) return;
+      var r = orb.getBoundingClientRect(), s = Math.max(r.width, r.height) * 2;
+      var w = document.createElement('span'); w.className = 'ripple';
+      w.style.width = w.style.height = s + 'px';
+      w.style.left = (ev.clientX - r.left - s / 2) + 'px'; w.style.top = (ev.clientY - r.top - s / 2) + 'px';
+      orb.appendChild(w); setTimeout(function(){ w.remove(); }, 700);
+    });
     b.onclick = function(){
       if (busy) return;
       touchIdle();
-      setMode(b.getAttribute('data-mode'));
-      if (!stream) startCam().catch(function(){});
+      setTimeout(function(){
+        setMode(b.getAttribute('data-mode'));
+        if (!stream) startCam().catch(function(){});
+      }, 180);
     };
   });
   document.getElementById('cancelMode').onclick = function(){ setMode(null); };
