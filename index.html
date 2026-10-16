@@ -345,10 +345,10 @@ body.nokey #setupMsg{display:block}
       o.start(); o.stop(actx.currentTime + ms/1000);
     } catch(e){}
   }
-  // 語音：有祖魯語語音（例如 Edge）就念祖魯語，沒有就念英文（Android 都有）；成功連名字一起念
+  // 語音：成功念史瓦帝尼語 Wamukelekile／Hamba kahle＋名字（Alan 10/16 定）；有祖魯語語音（例如 Edge）就用它念，發音較近，沒有就用英文語音
   var TALK = {
-    zu: { IN: 'Siyakwamukela, ', OUT: 'Hamba kahle, ', fail: 'Akuphumelelanga, zama futhi' },
-    en: { IN: 'Welcome, ', OUT: 'Goodbye, ', fail: 'Not clocked. Please try again.' }
+    zu: { IN: 'Wamukelekile, ', OUT: 'Hamba kahle, ', fail: 'Akuphumelelanga, zama futhi' },
+    en: { IN: 'Wamukelekile, ', OUT: 'Hamba kahle, ', fail: 'Not clocked. Please try again.' }
   };
   function pickVoice(re){
     if (!window.speechSynthesis) return null;
