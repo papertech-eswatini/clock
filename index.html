@@ -171,6 +171,13 @@ td.fl{color:#b8860b;font-size:12px;white-space:normal}
 .tag.out{background:#fbeae2;color:#c0582b}
 .tag.wait{background:#fff6dc;color:#b8860b}
 .note{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.6}
+/* 人臉比對試用（只在 ?setup） */
+#facePanel .stats{grid-template-columns:repeat(5,1fr)}
+#facePanel .tablewrap{max-height:320px;margin-top:10px}
+#facePanel img{width:40px;height:40px;object-fit:cover;border-radius:6px;display:block}
+.tag.ok{background:#e3f4ea;color:#1e8e4e}
+.tag.bad{background:#fde7e7;color:#c62828}
+.tag.none{background:#eef0f3;color:#5f6b7a}
 canvas{display:none}
 #setupMsg{display:none;max-width:640px;margin:40px auto;padding:24px;background:#fff;color:var(--ink);border-radius:16px;line-height:1.7;-webkit-user-select:text;user-select:text}
 #setupMsg input{-webkit-user-select:text;user-select:text}
@@ -265,6 +272,35 @@ body.nokey #setupMsg{display:block}
     <button id="voiceTest">▶ Test</button>
   </div>
   <div class="note">Settings are saved on this tablet. Open the normal address (without ?setup) for staff.</div>
+</section>
+<section class="panel admin-only" id="facePanel">
+  <h2>Face check trial</h2>
+  <div class="row">
+    <button id="faceEnrol">＋ Enrol a face</button>
+    Match if distance ≤ <input type="number" id="faceThr" min="0.3" max="0.7" step="0.02" style="width:72px">
+    <span id="faceModel">Model not loaded</span>
+  </div>
+  <div class="stats" style="margin-top:12px">
+    <div class="stat"><b id="fN">0</b><small>Checks</small></div>
+    <div class="stat"><b id="fOk">0</b><small>Match</small></div>
+    <div class="stat warn"><b id="fBad">0</b><small>Not match</small></div>
+    <div class="stat"><b id="fNone">0</b><small>No face</small></div>
+    <div class="stat"><b id="fMs">-</b><small>Avg time (s)</small></div>
+  </div>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Enrolled</th><th>ID</th><th>Photos</th><th>Checks</th><th>Not match</th><th></th></tr></thead>
+      <tbody id="faceList"></tbody>
+    </table>
+  </div>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th></th><th>Time</th><th>Name</th><th>Result</th><th>Distance</th><th>Closest other</th><th>Time (s)</th></tr></thead>
+      <tbody id="faceLog"></tbody>
+    </table>
+  </div>
+  <div class="row"><button id="faceCsv">Download results (CSV)</button><button id="faceClear">Clear results</button></div>
+  <div class="note">Trial only: staff never see the result and clocking is never blocked. Only enrolled people are checked. Enrol: tap the button, scan the person's card, then the person looks at the camera for about 3 seconds. Faces and results stay on this tablet. Distance: smaller = more alike. "Closest other" is the most similar other enrolled person; if it is often below the match line, lower the line.</div>
 </section>
 <section class="panel admin-only">
   <h2>Recent on this tablet <span id="todayLabel"></span></h2>
@@ -435,7 +471,8 @@ body.nokey #setupMsg{display:block}
       (hh >= 5 && hh < 12 ? 'Good morning' : hh >= 12 && hh < 17 ? 'Good afternoon' : 'Good evening');
     // 鏡頭還沒出畫面前不倒數（5 秒很短，不能被開鏡頭的時間吃掉）
     if (mode && !busy && !(stream && video.readyState >= 2)){ modeAt = Date.now(); touchIdle(); }
-    if (mode && !busy){
+    if (enrolling){ modeAt = Date.now(); touchIdle(); }   // 登錄人臉不倒數，按 Cancel 才離開
+    if (mode && !busy && !enrolling){
       var waited = Date.now() - modeAt;
       var leftS = Math.max(0, Math.ceil((MODE_MS - waited) / 1000));
       if (waited > MODE_MS){
@@ -478,6 +515,7 @@ body.nokey #setupMsg{display:block}
   function beep(freq, ms){
     try {
       actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      if (actx.state !== 'running' && actx.resume) actx.resume();   // 平板放久或變暗後聲音會被暫停，叫醒它
       var o = actx.createOscillator(), g = actx.createGain();
       o.frequency.value = freq; o.connect(g); g.connect(actx.destination);
       g.gain.setValueAtTime(0.25, actx.currentTime);
@@ -641,8 +679,12 @@ body.nokey #setupMsg{display:block}
       bar.className = m === 'IN' ? 'in' : 'out';
       document.getElementById('modeText').textContent = m === 'IN' ? '➜ CLOCK IN: scan your card' : '⇠ CLOCK OUT: scan your card';   // 不用太陽：上班不一定是白天（Alan 10/16，有晚班）
       lastText = '';
-      showWaiting('', 'Waiting for your card', 'NOT clocked yet ・ Hold your card in the yellow box');
+      if (enrolling){
+        document.getElementById('modeText').textContent = '☺ ENROL FACE: scan the card';
+        showWaiting('', 'Enrol a face', 'Scan the employee card, then look at the camera');
+      } else showWaiting('', 'Waiting for your card', 'NOT clocked yet ・ Hold your card in the yellow box');
     } else {
+      enrolling = false;
       camwrap.classList.remove('scan');
       if (!keepResult) idleMsg();
     }
@@ -676,6 +718,9 @@ body.nokey #setupMsg{display:block}
     }
     // 讀到卡當下就拍照，人不用等
     var photo = takePhoto(); flash();
+    // 人臉試用：有登錄的人另外留一張大一點的畫面，結果出來後再背景比對
+    var fimg = faceGrab(card.slice(0, 7));
+    if (fimg) setTimeout(function(){ faceCheck(fimg, card.slice(0, 7)); }, 800);
     busy = true;
     setMode(null, true);
     var S = lsGet(SYNC_STORE, null), id = card.slice(0, 7);
@@ -854,7 +899,7 @@ body.nokey #setupMsg{display:block}
         var t = Date.now();
         if (code.data !== lastText || t - lastTextAt > 3000){
           lastText = code.data; lastTextAt = t;
-          clock(code.data, mode);
+          if (enrolling) enrolCard(code.data); else clock(code.data, mode);
         } else { lastTextAt = t; }
       }
     }
@@ -905,9 +950,218 @@ body.nokey #setupMsg{display:block}
     if (Date.now() - lastShowAt > 3000) idleMsg();
   }
 
+  /* ---------- 人臉比對試用（Alan 10/16）----------
+     只在 ?setup 登錄，員工畫面完全看不到、也不會擋打卡；只比對有登錄的人。
+     臉部特徵與比對結果都存在這台平板（localStorage），試一週看速度與誤判率再決定要不要正式上線。 */
+  var FACE_STORE = 'pte_clock_face_v1', FACELOG_STORE = 'pte_clock_facelog_v1';
+  var FACE_LIB = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/dist/face-api.js';
+  var FACE_MODELS = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/model/';
+  var enrolling = false, faceP = null;
+  function faceDb(){ var F = lsGet(FACE_STORE, null) || {}; F.faces = F.faces || {}; F.thr = F.thr || 0.5; return F; }
+  function faceLog(){ return lsGet(FACELOG_STORE, []); }
+  function faceModel(t){ document.getElementById('faceModel').textContent = t; }
+  // 第一次用才下載套件與模型（約 8 MB，之後瀏覽器會留著）
+  function faceReady(){
+    if (faceP) return faceP;
+    faceModel('Loading model…');
+    var t0 = Date.now();
+    faceP = new Promise(function(ok, no){
+      if (window.faceapi) return ok();
+      var s = document.createElement('script');
+      s.src = FACE_LIB; s.onload = ok; s.onerror = function(){ no(new Error('library download failed')); };
+      document.head.appendChild(s);
+    }).then(function(){
+      return Promise.all([
+        faceapi.nets.tinyFaceDetector.loadFromUri(FACE_MODELS),
+        faceapi.nets.faceLandmark68TinyNet.loadFromUri(FACE_MODELS),
+        faceapi.nets.faceRecognitionNet.loadFromUri(FACE_MODELS)
+      ]);
+    }).then(function(){
+      // 先空跑一次，第一次真的比對才不會特別慢
+      var c = document.createElement('canvas'); c.width = 160; c.height = 120;
+      return faceDetect(c).catch(function(){});
+    }).then(function(){
+      faceModel('Model ready (' + ((Date.now() - t0) / 1000).toFixed(1) + ' s)');
+    }).catch(function(e){ faceP = null; faceModel('Model failed: ' + (e && e.message || e)); throw e; });
+    return faceP;
+  }
+  function faceDetect(src, loose){
+    // face-api 回傳的不是完整的 Promise（沒有 .catch），包一層
+    var o = loose ? { inputSize: 416, scoreThreshold: 0.3 } : { inputSize: 320, scoreThreshold: 0.5 };
+    return Promise.resolve(faceapi.detectSingleFace(src, new faceapi.TinyFaceDetectorOptions(o))
+      .withFaceLandmarks(true).withFaceDescriptor());
+  }
+  // 打卡比對：先用快的找臉，找不到再放寬找一次（範例照片測試 12 張找不到的降到 1 張）
+  function faceDetectTwice(src){
+    return faceDetect(src).then(function(r){ return r || faceDetect(src, true); });
+  }
+  function faceDist(a, b){ var s = 0; for (var i = 0; i < a.length; i++){ var d = a[i] - b[i]; s += d * d; } return Math.sqrt(s); }
+  function faceMin(q, list){ var m = 9; list.forEach(function(d){ m = Math.min(m, faceDist(q, d)); }); return m; }
+  function faceThumb(src, box){
+    var t = document.createElement('canvas'); t.width = t.height = 64;
+    var g = t.getContext('2d');
+    if (box){
+      var s = Math.max(box.width, box.height) * 1.4, cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+      g.drawImage(src, cx - s / 2, cy - s / 2, s, s, 0, 0, 64, 64);
+    } else {
+      var w = src.width, h = src.height, m = Math.min(w, h);
+      g.drawImage(src, (w - m) / 2, (h - m) / 2, m, m, 0, 0, 64, 64);
+    }
+    return t.toDataURL('image/jpeg', 0.6);
+  }
+
+  // 打卡讀到卡的那一刻：只有登錄過的人才留畫面
+  function faceGrab(id){
+    if (!faceDb().faces[id] || !stream || !video.videoWidth) return null;
+    var c = document.createElement('canvas');
+    c.width = 480; c.height = Math.round(480 * video.videoHeight / video.videoWidth) || 360;
+    c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
+    return c;
+  }
+  function faceCheck(c, id){
+    var F = faceDb(), me = F.faces[id];
+    if (!c || !me) return;
+    var t1 = 0;
+    faceReady().then(function(){ t1 = performance.now(); return faceDetectTwice(c); }).then(function(r){
+      var o = { ts: Date.now(), id: id, n: me.n, ms: Math.round(performance.now() - t1), thr: F.thr };
+      if (!r){ o.res = 'NOFACE'; o.img = faceThumb(c); }
+      else {
+        var q = r.descriptor, best = null;
+        o.d = +faceMin(q, me.d).toFixed(3);
+        Object.keys(F.faces).forEach(function(k){
+          if (k === id) return;
+          var d = faceMin(q, F.faces[k].d);
+          if (!best || d < best.d) best = { n: F.faces[k].n, d: d };
+        });
+        if (best){ o.od = +best.d.toFixed(3); o.on = best.n; }
+        o.res = o.d <= F.thr ? 'MATCH' : 'NOMATCH';
+        if (best && best.d < o.d && best.d <= F.thr) o.res = 'OTHER';   // 比較像另一位登錄的人
+        o.img = faceThumb(c, r.detection.box);
+      }
+      var L = faceLog(); L.push(o); if (L.length > 200) L = L.slice(-200);
+      if (!lsSet(FACELOG_STORE, L)){ L = L.slice(-50); lsSet(FACELOG_STORE, L); }
+      renderFace();
+    }).catch(function(){});
+  }
+
+  // 登錄：掃員工卡 → 連拍約 3 秒，取 3 張以上清楚的臉
+  function enrolCard(raw){
+    var card = String(raw || '').trim().toUpperCase();
+    if (!CARD_RE.test(card)){ beep(220, 300); showWaiting('bad', 'Not a PTE clock card', 'Scan the employee card'); return; }
+    var id = card.slice(0, 7), S = lsGet(SYNC_STORE, null), e = S && S.cards ? S.cards[id] : null;
+    var name = e ? niceName(e.n) : id;
+    busy = true; flash();
+    showWaiting('', 'Enrolling ' + name, 'Look straight at the camera and keep still…');
+    faceReady().then(function(){
+      var got = [], tries = 0;
+      return new Promise(function(done){
+        (function one(){
+          if (!stream || tries >= 10 || got.length >= 5) return done(got);
+          tries++;
+          faceDetect(video).then(function(r){
+            if (r && r.detection.score > 0.6) got.push(Array.prototype.map.call(r.descriptor, function(v){ return +v.toFixed(4); }));
+            showWaiting('', 'Enrolling ' + name, 'Keep still… ' + got.length + ' / 5');
+            setTimeout(one, 300);
+          }).catch(function(){ setTimeout(one, 300); });
+        })();
+      });
+    }).then(function(got){
+      busy = false;
+      if (got.length < 3){
+        beep(220, 300); lastText = '';
+        showWaiting('bad', 'Face not clear (' + got.length + ' / 5)', 'Come closer, face the light, take off cap or glasses, then scan the card again');
+        return;
+      }
+      var F = faceDb(); F.faces[id] = { n: name, d: got, at: Date.now() };
+      if (!lsSet(FACE_STORE, F)){ beep(220, 300); showWaiting('bad', 'Tablet storage full', 'Clear results and try again'); return; }
+      beep(880, 120); setTimeout(function(){ beep(1320, 160); }, 140);
+      setMode(null, true);
+      show('in', 'Face enrolled ✔', name === id ? id : name + ' ・ ' + id, got.length + ' photos saved on this tablet');
+      renderFace(); afterResult();
+    }).catch(function(err){
+      busy = false; beep(220, 300); lastText = '';
+      showWaiting('bad', 'Face model failed to load', (err && err.message || '') + ' ・ Check the internet and try again');
+    });
+  }
+
+  var faceDelArm = '';
+  function renderFace(){
+    if (!document.body.classList.contains('admin')) return;
+    var F = faceDb(), L = faceLog();
+    document.getElementById('faceThr').value = F.thr;
+    var n = L.length, ok = 0, bad = 0, none = 0, ms = 0, per = {};
+    L.forEach(function(o){
+      per[o.id] = per[o.id] || { n: 0, bad: 0 }; per[o.id].n++;
+      if (o.res === 'MATCH') ok++; else if (o.res === 'NOFACE') none++; else { bad++; per[o.id].bad++; }
+      ms += o.ms || 0;
+    });
+    document.getElementById('fN').textContent = n;
+    document.getElementById('fOk').textContent = ok;
+    document.getElementById('fBad').textContent = bad;
+    document.getElementById('fNone').textContent = none;
+    document.getElementById('fMs').textContent = n ? (ms / n / 1000).toFixed(1) : '-';
+    var fl = document.getElementById('faceList'); fl.innerHTML = '';
+    Object.keys(F.faces).sort(function(a, b){ return F.faces[a].n < F.faces[b].n ? -1 : 1; }).forEach(function(id){
+      var p = per[id] || { n: 0, bad: 0 }, tr = document.createElement('tr');
+      [F.faces[id].n, id, F.faces[id].d.length, p.n, p.bad].forEach(function(v){ var td = document.createElement('td'); td.textContent = v; tr.appendChild(td); });
+      var td = document.createElement('td'), b = document.createElement('button');
+      b.textContent = faceDelArm === id ? 'Tap again to delete' : 'Delete';
+      b.onclick = function(){
+        if (faceDelArm !== id){ faceDelArm = id; renderFace(); return; }
+        var G = faceDb(); delete G.faces[id]; lsSet(FACE_STORE, G); faceDelArm = ''; renderFace();
+      };
+      td.appendChild(b); tr.appendChild(td); fl.appendChild(tr);
+    });
+    if (!Object.keys(F.faces).length) fl.innerHTML = '<tr><td colspan="6" style="color:#8a94a3">Nobody enrolled yet</td></tr>';
+    var lg = document.getElementById('faceLog'); lg.innerHTML = '';
+    var TAG = { MATCH: ['ok', 'Match'], NOMATCH: ['bad', 'Not match'], OTHER: ['bad', 'Looks like someone else'], NOFACE: ['none', 'No face found'] };
+    L.slice().reverse().slice(0, 60).forEach(function(o){
+      var tr = document.createElement('tr'), d = new Date(o.ts);
+      var im = document.createElement('td'), img = document.createElement('img'); img.src = o.img || ''; img.alt = ''; im.appendChild(img); tr.appendChild(im);
+      var t = TAG[o.res] || ['none', o.res];
+      [dayKey(d).slice(5) + ' ' + hms(d).slice(0, 5), o.n, '<span class="tag ' + t[0] + '">' + t[1] + '</span>',
+       o.d != null ? o.d.toFixed(2) : '', o.od != null ? o.od.toFixed(2) + ' ' + o.on : '', (o.ms / 1000).toFixed(1)].forEach(function(v, i){
+        var td = document.createElement('td'); if (i === 2) td.innerHTML = v; else td.textContent = v; tr.appendChild(td);
+      });
+      lg.appendChild(tr);
+    });
+  }
+  document.getElementById('faceEnrol').onclick = function(){
+    if (busy) return;
+    enrolling = true; setMode('IN');
+    if (!stream) startCam().catch(function(){});
+    faceReady().catch(function(){});
+  };
+  document.getElementById('faceThr').onchange = function(){
+    var v = Number(this.value); if (!(v >= 0.3 && v <= 0.7)) { renderFace(); return; }
+    var F = faceDb(); F.thr = v; lsSet(FACE_STORE, F); renderFace();
+  };
+  document.getElementById('faceClear').onclick = function(){
+    if (this.textContent !== 'Tap again to clear'){ this.textContent = 'Tap again to clear'; return; }
+    this.textContent = 'Clear results'; lsSet(FACELOG_STORE, []); renderFace();
+  };
+  document.getElementById('faceCsv').onclick = function(){
+    var rows = [['date', 'time', 'id', 'name', 'result', 'distance', 'match_line', 'closest_other', 'other_distance', 'seconds']];
+    faceLog().forEach(function(o){
+      var d = new Date(o.ts);
+      rows.push([dayKey(d), hms(d), o.id, o.n, o.res, o.d != null ? o.d : '', o.thr, o.on || '', o.od != null ? o.od : '', (o.ms / 1000).toFixed(2)]);
+    });
+    var csv = rows.map(function(r){ return r.map(function(v){ v = String(v); return /[",]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(','); }).join('\r\n');
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' }));
+    a.download = 'face_trial_' + dayKey(new Date()) + '.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+  };
+  renderFace();
+  // 有人登錄過就在開頁 15 秒後先把模型載好，打卡時不用等
+  if (Object.keys(faceDb().faces).length) setTimeout(function(){ faceReady().catch(function(){}); }, 15000);
+
   [].forEach.call(document.querySelectorAll('.big-btn'), function(b){
     // 按下：在手指位置放一圈水波，0.18 秒後才切到刷卡畫面，讓員工看得到按到了
     b.addEventListener('pointerdown', function(ev){
+      // 手指按下的這一下瀏覽器才允許出聲：先把聲音和語音叫醒，打卡成功時才念得出來
+      try { var ac = audioCtx(); if (ac.state !== 'running' && ac.resume) ac.resume(); } catch(e){}
+      if (window.speechSynthesis && speechSynthesis.paused) speechSynthesis.resume();
       var orb = b.querySelector('.orb'); if (!orb) return;
       var r = orb.getBoundingClientRect(), s = Math.max(r.width, r.height) * 2;
       var w = document.createElement('span'); w.className = 'ripple';
@@ -963,9 +1217,32 @@ body.nokey #setupMsg{display:block}
   keepAwake();
   document.addEventListener('visibilitychange', keepAwake);
 
+  // 自動更新（Alan 10/16）：每 5 分鐘、以及 App 切回前景時，看 GitHub 上的版本號跟這頁一不一樣；
+  // 不一樣就等沒人在打卡（沒在刷卡、沒在存、鏡頭關著、結果訊息已顯示超過 10 秒）再重新整理。
+  // 斷網佇列存在平板裡，重新整理不會掉資料。每次上傳新版要把 APP_VER 改掉，平板才會換。
+  var APP_VER = '2026-10-16-2';
+  var newVer = '';
+  function checkUpdate(){
+    if (!/^https:/.test(location.protocol)) return;
+    fetch(location.pathname + '?v=' + Date.now(), { cache: 'no-store' }).then(function(r){ return r.ok ? r.text() : ''; }).then(function(t){
+      var m = /var APP_VER = '([^']+)'/.exec(t || '');
+      if (m && m[1] !== APP_VER) { newVer = m[1]; tryReload(); }
+    }).catch(function(){});
+  }
+  function tryReload(){
+    if (!newVer) return;
+    if (mode || busy || stream || Date.now() - lastShowAt < 10000) { setTimeout(tryReload, 15000); return; }
+    // 先把暫存的舊檔換掉，再重新整理
+    Promise.all([location.pathname, 'bg.webp'].map(function(u){ return fetch(u, { cache: 'reload' }).catch(function(){}); }))
+      .then(function(){ location.reload(); });
+  }
+  setInterval(checkUpdate, 5 * 60 * 1000);
+  document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible') checkUpdate(); });
+
   render();
   sync();
   setInterval(function(){ if (!busy) sync(); }, WARM_MS);
+  setTimeout(checkUpdate, 20000);
   if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) listCams().catch(function(){});
 })();
 </script>
