@@ -336,6 +336,8 @@ body.nokey #setupMsg{display:block}
   var IDLE_MS = 5000;              // Alan 10/16 改 5 秒
   var MODE_MS = 5000;              // 從鏡頭真正打開才開始算
   var SCAN_MS = 150;
+  var SCAN_FAST_MS = 60;           // 內建條碼辨識一次只要幾十毫秒，間隔可以短
+  var CAM_KEEP_MS = 15000;         // Alan 10/16：打卡後鏡頭多開 15 秒，下一位按了馬上能掃（畫面不顯示，只是不關）
   var NUDGE_MS = 2500;
   var SWITCH_MS = 5000;
   var NET_TIMEOUT_MS = 25000;      // Google 後端閒置後第一次可能要 10 秒以上
@@ -491,7 +493,7 @@ body.nokey #setupMsg{display:block}
     if (stream){
       var s = Math.ceil((idleAt - Date.now()) / 1000);
       if (s <= 0 && !busy && !mode) stopCam();
-      else left.textContent = 'Auto off in ' + Math.max(s, 0) + ' s';
+      else left.textContent = mode ? 'Auto off in ' + Math.max(s, 0) + ' s' : '';   // 打卡後鏡頭暖著等下一位時不顯示倒數
     } else left.textContent = '';
     // 閒置變暗：鏡頭關著、沒在打卡、結果也顯示夠久了才暗；?setup 和未設定的平板不暗
     document.getElementById('sClock').textContent = hms(d).slice(0, 5);
@@ -833,7 +835,8 @@ body.nokey #setupMsg{display:block}
     });
   }
 
-  function afterResult(){ if (!mode) stopCam(); }
+  // 打卡後先不關鏡頭，15 秒沒人按才關（tick 裡依 idleAt 關）；下一位不用再等鏡頭開
+  function afterResult(){ if (!mode && stream) idleAt = Date.now() + CAM_KEEP_MS; }
 
   function resultFor(rid, type, who, time, flag, offline, queued){
     var other = type === 'IN' ? 'OUT' : 'IN';
@@ -890,23 +893,57 @@ body.nokey #setupMsg{display:block}
   }
 
   /* ---------- 鏡頭 ---------- */
-  function scanLoop(){
-    if (!stream) return;
+  // 加速（Alan 10/16）：有平板內建條碼辨識（Chrome BarcodeDetector）就用它，快很多也比較省電；
+  // 每 4 次仍用 jsQR 掃一次黃框，萬一內建辨識在這台平板讀不到也不會卡住。沒有內建辨識就全用 jsQR。
+  var bd = null, loopGen = 0, scanN = 0;
+  try {
+    if ('BarcodeDetector' in window) BarcodeDetector.getSupportedFormats().then(function(f){
+      if (f.indexOf('qr_code') >= 0) bd = new BarcodeDetector({ formats: ['qr_code'] });
+    }).catch(function(){});
+  } catch(e){}
+  function gotCode(data){
+    var t = Date.now();
+    if (data !== lastText || t - lastTextAt > 3000){
+      lastText = data; lastTextAt = t;
+      if (enrolling) enrolCard(data); else clock(data, mode);
+    } else { lastTextAt = t; }
+  }
+  // 黃框在影片裡的位置（影片是 cover 填滿、左右鏡像），四周多留 35% 給沒對準的人；算不出來就掃整張
+  function scanRect(){
+    var fe = document.querySelector('.frame'), vw = video.videoWidth, vh = video.videoHeight;
+    if (!fe || !vw || !vh) return null;
+    var fr = fe.getBoundingClientRect(), vr = video.getBoundingClientRect();
+    if (!fr.width || !vr.width) return null;
+    var s = Math.max(vr.width / vw, vr.height / vh), ox = (vr.width - vw * s) / 2, oy = (vr.height - vh * s) / 2, pad = fr.width * 0.35;
+    var x1 = fr.left - vr.left - pad, x2 = fr.right - vr.left + pad, y1 = fr.top - vr.top - pad, y2 = fr.bottom - vr.top + pad;
+    var sx1 = Math.max(0, vw - (x2 - ox) / s), sx2 = Math.min(vw, vw - (x1 - ox) / s);
+    var sy1 = Math.max(0, (y1 - oy) / s), sy2 = Math.min(vh, (y2 - oy) / s);
+    if (sx2 - sx1 < 60 || sy2 - sy1 < 60) return null;
+    return { x: sx1, y: sy1, w: sx2 - sx1, h: sy2 - sy1 };
+  }
+  function jsqrScan(){
+    var r = scanRect() || { x: 0, y: 0, w: video.videoWidth, h: video.videoHeight };
+    var k = Math.min(1, 640 / r.w), w = Math.round(r.w * k), h = Math.round(r.h * k);
+    canvas.width = w; canvas.height = h;
+    ctx.drawImage(video, r.x, r.y, r.w, r.h, 0, 0, w, h);
+    var code = jsQR(ctx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: 'dontInvert' });
+    if (code && code.data) gotCode(code.data);
+  }
+  function scanLoop(gen){
+    if (!stream || gen !== loopGen) return;
+    var next = function(ms){ if (stream && gen === loopGen) loopId = setTimeout(function(){ scanLoop(gen); }, ms); };
     if (mode && !busy && video.readyState === video.HAVE_ENOUGH_DATA){
-      var w = 640, h = Math.round(640 * video.videoHeight / video.videoWidth) || 480;
-      canvas.width = w; canvas.height = h;
-      ctx.drawImage(video, 0, 0, w, h);
-      var img = ctx.getImageData(0, 0, w, h);
-      var code = jsQR(img.data, w, h, { inversionAttempts: 'dontInvert' });
-      if (code && code.data){
-        var t = Date.now();
-        if (code.data !== lastText || t - lastTextAt > 3000){
-          lastText = code.data; lastTextAt = t;
-          if (enrolling) enrolCard(code.data); else clock(code.data, mode);
-        } else { lastTextAt = t; }
+      scanN++;
+      if (bd && scanN % 4){
+        // 上一次辨識完才排下一次，不會堆疊
+        bd.detect(video).then(function(c){ if (c && c[0] && c[0].rawValue && mode && !busy) gotCode(c[0].rawValue); })
+          .catch(function(){ bd = null; })
+          .then(function(){ next(SCAN_FAST_MS); });
+        return;
       }
+      jsqrScan();
     }
-    loopId = setTimeout(scanLoop, SCAN_MS);
+    next(SCAN_MS);
   }
   function listCams(){
     return navigator.mediaDevices.enumerateDevices().then(function(devs){
@@ -927,14 +964,16 @@ body.nokey #setupMsg{display:block}
       return Promise.reject();
     }
     if (stream) stream.getTracks().forEach(function(t){ t.stop(); });
-    var c = { width: { ideal: 1280 }, height: { ideal: 720 } };
+    // 省電：640x480、每秒 15 張就夠讀卡和拍照（原本 1280x720 最後也是縮成 640 寬才掃）
+    var c = { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 15, max: 20 } };
     var saved = camSel.value || lsGet('pte_clock_cam', '');
     if (saved) c.deviceId = { ideal: saved }; else c.facingMode = 'user';
     return navigator.mediaDevices.getUserMedia({ video: c, audio: false }).then(function(s){
       stream = s; video.srcObject = s; video.play();
       touchIdle();
       clearTimeout(loopId);
-      loopId = setTimeout(scanLoop, SCAN_MS);
+      var gen = ++loopGen;
+      loopId = setTimeout(function(){ scanLoop(gen); }, SCAN_MS);
       listCams();
     }).catch(function(e){
       setMode(null);
@@ -944,7 +983,7 @@ body.nokey #setupMsg{display:block}
     });
   }
   function stopCam(){
-    clearTimeout(loopId);
+    clearTimeout(loopId); loopGen++;
     if (stream) stream.getTracks().forEach(function(t){ t.stop(); });
     stream = null;
     video.srcObject = null;
@@ -1258,11 +1297,15 @@ body.nokey #setupMsg{display:block}
   }
   keepAwake();
   document.addEventListener('visibilitychange', keepAwake);
+  // 省電：App 切到背景（例如有人按了 Home 鍵）就關鏡頭，不在背景空轉
+  document.addEventListener('visibilitychange', function(){
+    if (document.visibilityState === 'hidden' && stream && !busy){ enrolling = false; stopCam(); }
+  });
 
   // 自動更新（Alan 10/16）：每 5 分鐘、以及 App 切回前景時，看 GitHub 上的版本號跟這頁一不一樣；
   // 不一樣就等沒人在打卡（沒在刷卡、沒在存、鏡頭關著、結果訊息已顯示超過 10 秒）再重新整理。
   // 斷網佇列存在平板裡，重新整理不會掉資料。每次上傳新版要把 APP_VER 改掉，平板才會換。
-  var APP_VER = '2026-10-16-3';
+  var APP_VER = '2026-10-16-4';
   var newVer = '';
   function checkUpdate(){
     if (!/^https:/.test(location.protocol)) return;
@@ -1279,11 +1322,11 @@ body.nokey #setupMsg{display:block}
       .then(function(){ location.reload(); });
   }
   setInterval(checkUpdate, 5 * 60 * 1000);
-  document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible') checkUpdate(); });
+  document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible'){ checkUpdate(); sync(); } });
 
   render();
   sync();
-  setInterval(function(){ if (!busy) sync(); }, WARM_MS);
+  setInterval(function(){ if (!busy && document.visibilityState === 'visible') sync(); }, WARM_MS);   // 背景時不同步，回到前景再同步
   setTimeout(checkUpdate, 20000);
   if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) listCams().catch(function(){});
 })();
