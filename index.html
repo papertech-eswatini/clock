@@ -2,77 +2,99 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PTE Clock In / Out</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d1f33">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<title>PTE Clock</title>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <style>
+/* 打卡機畫面：整頁剛好一個螢幕、不捲動；清單與設定只在 ?setup 顯示 */
 :root{
-  --bg:#f4f6f8; --card:#fff; --ink:#1d2733; --muted:#6b7785; --line:#e1e6eb;
-  --brand:#1f5fa8; --in:#1e8e4e; --out:#c0582b; --warn:#b8860b; --bad:#c62828;
+  --bg:#0d1f33; --panel:#14304d; --ink:#1d2733; --muted:#6b7785; --line:#e1e6eb;
+  --in:#1e9e57; --in2:#137a41; --out:#d9632f; --out2:#b0461a; --warn:#b8860b; --bad:#c62828;
 }
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);
-  font-family:"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif}
-header{background:var(--brand);color:#fff;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
-header h1{margin:0;font-size:20px;font-weight:700}
-header .sub{font-size:12px;opacity:.85}
-.nobuddy{display:flex;align-items:center;gap:10px;background:#d32f2f;color:#fff;border-radius:10px;padding:8px 14px;
-  box-shadow:0 2px 8px rgba(0,0,0,.2)}
-.nobuddy svg{width:38px;height:38px;flex:none}
-.nobuddy b{display:block;font-size:18px;letter-spacing:.5px}
-.nobuddy span{display:block;font-size:13px;opacity:.95}
-#clock{font-size:34px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:1px}
-#date{font-size:13px;opacity:.9;text-align:right}
-main{max-width:1200px;margin:0 auto;padding:16px;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:16px}
-@media (max-width:860px){main{grid-template-columns:1fr}}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
-.camwrap{position:relative;background:#16324f;border-radius:10px;overflow:hidden;aspect-ratio:4/3}
-video{width:100%;height:100%;object-fit:cover;display:block;transform:scaleX(-1)}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:#fff;overflow:hidden;overscroll-behavior:none;
+  -webkit-user-select:none;user-select:none;
+  font-family:"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;
+  display:flex;flex-direction:column;height:100vh;height:100dvh}
+body.admin{overflow:auto;height:auto;min-height:100dvh}
+
+header{flex:none;display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:max(14px,env(safe-area-inset-top)) 22px 12px}
+.brand b{display:block;font-size:clamp(18px,3vw,26px);letter-spacing:1.5px}
+.brand span{font-size:clamp(11px,1.6vw,14px);color:#9fb6cf;letter-spacing:.5px}
+.time{text-align:right}
+#clock{font-size:clamp(34px,6.5vw,58px);font-weight:700;font-variant-numeric:tabular-nums;line-height:1}
+#date{font-size:clamp(12px,1.8vw,16px);color:#9fb6cf;margin-top:4px}
+
+.nobuddy{flex:none;display:flex;align-items:center;justify-content:center;gap:12px;background:#c62828;color:#fff;
+  padding:9px 16px;margin:0 16px;border-radius:12px}
+.nobuddy svg{width:34px;height:34px;flex:none}
+.nobuddy b{font-size:clamp(15px,2.4vw,20px);letter-spacing:1px}
+.nobuddy span{font-size:clamp(12px,1.8vw,15px);opacity:.92;margin-left:6px}
+
+main{flex:1;min-height:0;display:flex;flex-direction:column;gap:14px;padding:14px 16px}
+body.admin main{flex:none}
+.camwrap{position:relative;flex:1;min-height:0;background:var(--panel);border-radius:22px;overflow:hidden}
+body.admin .camwrap{flex:none;height:62vh}
+video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;transform:scaleX(-1)}
 .guide{display:none}
 .camwrap.scan .guide{display:block}
-.face{position:absolute;left:36%;right:36%;top:18%;height:38%;border:3px dashed rgba(255,255,255,.55);border-radius:50%;pointer-events:none}
-.frame{position:absolute;left:30%;right:30%;top:62%;bottom:7%;border:3px dashed rgba(255,214,0,.85);border-radius:14px;pointer-events:none}
-.frame span{position:absolute;top:-24px;left:0;right:0;text-align:center;color:#ffd600;font-size:13px;text-shadow:0 1px 3px #000}
-.hint{position:absolute;left:0;right:0;bottom:6px;text-align:center;color:#fff;font-size:clamp(11px,2.2vw,15px);text-shadow:0 1px 3px #000}
-#modeBar{position:absolute;left:0;right:0;top:0;padding:8px 12px;color:#fff;font-size:clamp(15px,3vw,22px);font-weight:700;
+.face{position:absolute;left:50%;transform:translateX(-50%);top:16%;width:min(34%,30vh);aspect-ratio:3/4;
+  border:3px dashed rgba(255,255,255,.6);border-radius:50%;pointer-events:none}
+.frame{position:absolute;left:50%;transform:translateX(-50%);top:60%;width:min(44%,36vh);aspect-ratio:1/1;max-height:32%;
+  border:3px dashed rgba(255,214,0,.9);border-radius:16px;pointer-events:none}
+.frame span{position:absolute;top:-26px;left:0;right:0;text-align:center;color:#ffd600;font-size:15px;text-shadow:0 1px 3px #000}
+.hint{position:absolute;left:0;right:0;bottom:12px;text-align:center;color:#fff;font-size:clamp(13px,2.2vw,18px);text-shadow:0 1px 3px #000}
+#modeBar{position:absolute;left:0;right:0;top:0;padding:14px 16px;color:#fff;font-size:clamp(18px,3.4vw,28px);font-weight:700;
   display:flex;align-items:center;justify-content:space-between;gap:8px}
-#modeBar.in{background:rgba(30,142,78,.92)}
-#modeBar.out{background:rgba(192,88,43,.92)}
-#modeBar button{font-size:13px;padding:4px 10px;background:rgba(255,255,255,.9);border:0}
-#chooser{position:absolute;inset:0;display:flex;gap:4%;align-items:center;justify-content:center;padding:6%;
-  background:rgba(22,50,79,.92)}
+#modeBar.in{background:rgba(30,158,87,.94)}
+#modeBar.out{background:rgba(217,99,47,.94)}
+#modeBar button{font-size:16px;padding:8px 16px;background:rgba(255,255,255,.95);border:0;border-radius:10px;color:#1d2733}
+
+#chooser{position:absolute;inset:0;display:flex;gap:16px;padding:16px;background:var(--panel)}
 .camwrap.scan #chooser{display:none}
-.big-btn{flex:1;height:78%;border:0;border-radius:18px;color:#fff;cursor:pointer;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;box-shadow:0 6px 18px rgba(0,0,0,.25)}
-.big-btn .ico{font-size:clamp(34px,7vw,60px)}
-.big-btn .t1{font-size:clamp(18px,3.4vw,34px);font-weight:700;white-space:nowrap}
-.big-btn .t2{font-size:clamp(14px,2.6vw,20px);opacity:.9}
-.big-btn.in{background:var(--in)}
-.big-btn.out{background:var(--out)}
-.big-btn:active{transform:scale(.98)}
+@media (orientation:portrait){#chooser{flex-direction:column}}
+.big-btn{flex:1;border:0;border-radius:20px;color:#fff;cursor:pointer;font:inherit;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+  box-shadow:0 10px 30px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.25)}
+.big-btn .ico{font-size:clamp(54px,11vw,110px);line-height:1}
+.big-btn .t1{font-size:clamp(30px,6vw,60px);font-weight:800;letter-spacing:2px}
+.big-btn .t2{font-size:clamp(16px,2.8vw,24px);opacity:.9}
+.big-btn.in{background:linear-gradient(160deg,var(--in),var(--in2))}
+.big-btn.out{background:linear-gradient(160deg,var(--out),var(--out2))}
+.big-btn:active{transform:scale(.985);filter:brightness(.95)}
 #flash{position:absolute;inset:0;background:#fff;opacity:0;transition:opacity .12s;pointer-events:none}
-#result{margin-top:14px;border-radius:12px;padding:18px;text-align:center;min-height:120px;
-  display:flex;flex-direction:column;justify-content:center;background:#eef2f6;transition:background .2s}
-#result .big{font-size:30px;font-weight:700}
-#result .who{font-size:22px;margin-top:4px}
-#result .small{font-size:14px;color:var(--muted);margin-top:6px}
-#result .flag{font-size:15px;color:var(--warn);margin-top:6px;font-weight:600}
-#result .act{margin:12px auto 0;font-size:18px;font-weight:700;padding:10px 20px;border-radius:10px;
+
+#result{flex:none;border-radius:20px;padding:18px 20px;text-align:center;min-height:clamp(120px,17vh,190px);
+  display:flex;flex-direction:column;justify-content:center;background:#fff;color:var(--ink);transition:background .2s}
+#result .big{font-size:clamp(26px,4.4vw,42px);font-weight:800}
+#result .who{font-size:clamp(20px,3.2vw,30px);margin-top:4px;font-weight:600}
+#result .small{font-size:clamp(14px,2vw,18px);color:var(--muted);margin-top:6px}
+#result .flag{font-size:clamp(15px,2.2vw,20px);color:var(--warn);margin-top:6px;font-weight:700}
+#result .act{margin:12px auto 0;font-size:20px;font-weight:700;padding:12px 24px;border-radius:12px;
   border:2px solid currentColor;background:#fff;color:inherit}
 #result.warn .big{color:#8a6100}
-#result.in{background:#e3f4ea;color:var(--in)}
-#result.out{background:#fbeae2;color:var(--out)}
+#result.in{background:#e3f4ea;color:var(--in2)}
+#result.out{background:#fbeae2;color:var(--out2)}
 #result.warn{background:#fff6dc;color:var(--warn)}
 #result.bad{background:#fde7e7;color:var(--bad)}
-.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px;font-size:13px;color:var(--muted)}
+
+footer{flex:none;display:flex;justify-content:space-between;gap:12px;padding:0 20px max(10px,env(safe-area-inset-bottom));
+  font-size:13px;color:#7f98b3}
+
+.admin-only{display:none!important}
+body.admin .admin-only{display:block!important}
+body.admin span.admin-only{display:inline-block!important}
+.panel{background:#fff;color:var(--ink);border-radius:16px;padding:16px;margin:0 16px 16px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;font-size:13px;color:var(--muted)}
 select,button,input{font:inherit;font-size:14px;padding:7px 12px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--ink)}
 button{cursor:pointer}
-.admin-only{display:none!important}
-body.admin .admin-only{display:inline-block!important}
-body.admin details.admin-only{display:block!important}
-.voicebox{margin-top:10px;font-size:13px;color:var(--muted)}
-.voicebox summary{cursor:pointer}
-.voicebox input[type=range]{padding:0;width:110px}
+input[type=range]{padding:0;width:110px}
 h2{font-size:16px;margin:0 0 10px}
 h2 span{font-weight:400;color:var(--muted);font-size:13px}
 .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px}
@@ -92,26 +114,21 @@ td.fl{color:var(--warn);font-size:12px;white-space:normal}
 .tag.wait{background:#fff6dc;color:var(--warn)}
 .note{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.6}
 canvas{display:none}
-#setupMsg{display:none;max-width:640px;margin:60px auto;padding:24px;background:#fff;border:1px solid #fecaca;border-radius:12px;line-height:1.7}
-body.nokey main{display:none}
+#setupMsg{display:none;max-width:640px;margin:40px auto;padding:24px;background:#fff;color:var(--ink);border-radius:16px;line-height:1.7;-webkit-user-select:text;user-select:text}
+#setupMsg input{-webkit-user-select:text;user-select:text}
+body.nokey main,body.nokey footer{display:none}
 body.nokey #setupMsg{display:block}
 </style>
 </head>
 <body>
 <header>
-  <div>
-    <h1>PTE Clock In / Out</h1>
-    <div class="sub" id="netState">Connecting…</div>
-  </div>
-  <div class="nobuddy" role="note">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#fff" stroke="#d32f2f" stroke-width="3"/><line x1="5" y1="5" x2="19" y2="19" stroke="#d32f2f" stroke-width="3"/></svg>
-    <div><b>STRICTLY PROHIBITED</b><span>Clocking in or out for another person</span></div>
-  </div>
-  <div>
-    <div id="clock">--:--:--</div>
-    <div id="date"></div>
-  </div>
+  <div class="brand"><b>PAPER TECH ESWATINI</b><span>Clock In / Clock Out</span></div>
+  <div class="time"><div id="clock">--:--:--</div><div id="date"></div></div>
 </header>
+<div class="nobuddy" role="note">
+  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#fff" stroke="#fff" stroke-width="2"/><circle cx="12" cy="12" r="8.5" fill="none" stroke="#c62828" stroke-width="2.6"/><line x1="6" y1="6" x2="18" y2="18" stroke="#c62828" stroke-width="2.6"/></svg>
+  <div><b>STRICTLY PROHIBITED</b><span>Clocking in or out for another person</span></div>
+</div>
 
 <div id="setupMsg">
   <h2 style="color:#c62828">This tablet is not set up</h2>
@@ -124,67 +141,60 @@ body.nokey #setupMsg{display:block}
 </div>
 
 <main>
-  <section class="card">
-    <div class="camwrap" id="camwrap">
-      <video id="video" playsinline muted></video>
-      <div class="guide">
-        <div class="face"></div>
-        <div class="frame"><span>Card here</span></div>
-        <div class="hint">Face in the circle, card at chest level</div>
-        <div id="modeBar"><span id="modeText"></span><button id="cancelMode">Cancel</button></div>
-      </div>
-      <div id="chooser">
-        <button class="big-btn in" data-mode="IN">
-          <span class="ico">☀️</span><span class="t1">CLOCK IN</span><span class="t2">Start work</span>
-        </button>
-        <button class="big-btn out" data-mode="OUT">
-          <span class="ico">🏠</span><span class="t1">CLOCK OUT</span><span class="t2">Leave work</span>
-        </button>
-      </div>
-      <div id="flash"></div>
+  <div class="camwrap" id="camwrap">
+    <video id="video" playsinline muted></video>
+    <div class="guide">
+      <div class="face"></div>
+      <div class="frame"><span>Card here</span></div>
+      <div class="hint">Face in the circle, card in the yellow box</div>
+      <div id="modeBar"><span id="modeText"></span><button id="cancelMode">Cancel</button></div>
     </div>
-    <div id="result">
-      <div class="big">Tap Clock In or Clock Out</div>
-      <div class="small">The camera opens when you tap and turns off after you clock (or after 15 seconds without a scan)</div>
+    <div id="chooser">
+      <button class="big-btn in" data-mode="IN">
+        <span class="ico">☀️</span><span class="t1">CLOCK IN</span><span class="t2">Start work</span>
+      </button>
+      <button class="big-btn out" data-mode="OUT">
+        <span class="ico">🏠</span><span class="t1">CLOCK OUT</span><span class="t2">Leave work</span>
+      </button>
     </div>
-    <div class="row">
-      <span class="admin-only">Camera <select id="camSel"></select></span>
-      <span id="idleLeft"></span>
-    </div>
-    <!-- 設定區只有網址加 ?setup 才看得到；選好存在這台平板，員工平常打開的畫面看不到 -->
-    <details class="voicebox admin-only" open>
-      <summary>Tablet settings (only shown with ?setup)</summary>
-      <div class="row">
-        Voice <select id="voiceSel"></select>
-        Pitch <input type="range" id="pitch" min="0.5" max="1.5" step="0.05">
-        <span id="pitchVal"></span>
-        Speed <input type="range" id="rate" min="0.6" max="1.3" step="0.05">
-        <span id="rateVal"></span>
-        <button id="voiceTest">▶ Test</button>
-      </div>
-    </details>
-    <div class="note">
-      Rules: Tap Clock In when you start work and Clock Out when you leave. If you leave during your shift,
-      Clock Out, then Clock In again when you return. Repeat scans within 60 seconds are ignored.
-      Two Clock Ins in a row, or a Clock Out without a Clock In, are still recorded but flagged for HR to check.
-    </div>
-  </section>
-
-  <section class="card">
-    <h2>Recent on this tablet <span id="todayLabel"></span></h2>
-    <div class="stats">
-      <div class="stat"><b id="sScans">0</b><small>Scans today</small></div>
-      <div class="stat warn"><b id="sQueue">0</b><small>Waiting to upload</small></div>
-    </div>
-    <div class="tablewrap">
-      <table>
-        <thead><tr><th>Time</th><th>Name</th><th>Type</th><th>Flag</th></tr></thead>
-        <tbody id="tbody"></tbody>
-      </table>
-    </div>
-    <div class="note">Records are saved to the PTE attendance sheet. If the internet is down, they are kept on this tablet and uploaded automatically.</div>
-  </section>
+    <div id="flash"></div>
+  </div>
+  <div id="result">
+    <div class="big">Tap Clock In or Clock Out</div>
+    <div class="small">Then show your card to the camera</div>
+  </div>
 </main>
+<footer>
+  <span id="netState">Connecting…</span>
+  <span id="idleLeft"></span>
+</footer>
+
+<!-- 以下只有網址加 ?setup 才看得到；設定存在這台平板，員工平常打開的畫面看不到 -->
+<section class="panel admin-only">
+  <h2>Tablet settings</h2>
+  <div class="row">Camera <select id="camSel"></select></div>
+  <div class="row">
+    Voice <select id="voiceSel"></select>
+    Pitch <input type="range" id="pitch" min="0.5" max="1.5" step="0.05"> <span id="pitchVal"></span>
+    Speed <input type="range" id="rate" min="0.6" max="1.3" step="0.05"> <span id="rateVal"></span>
+    <button id="voiceTest">▶ Test</button>
+  </div>
+  <div class="note">Settings are saved on this tablet. Open the normal address (without ?setup) for staff.</div>
+</section>
+<section class="panel admin-only">
+  <h2>Recent on this tablet <span id="todayLabel"></span></h2>
+  <div class="stats">
+    <div class="stat"><b id="sScans">0</b><small>Scans today</small></div>
+    <div class="stat warn"><b id="sQueue">0</b><small>Waiting to upload</small></div>
+  </div>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Time</th><th>Name</th><th>Type</th><th>Flag</th></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+  <div class="note">Rules: Clock In when you start work and Clock Out when you leave. If you leave during your shift, Clock Out, then Clock In again when you return. Repeat scans within 60 seconds are ignored. Two Clock Ins in a row, or a Clock Out without a Clock In, are recorded but flagged for HR.</div>
+</section>
 <canvas id="canvas"></canvas>
 <canvas id="snap"></canvas>
 
@@ -198,10 +208,10 @@ body.nokey #setupMsg{display:block}
   var SYNC_STORE = 'pte_clock_sync_v1';     // 後端同步來的有效卡片雜湊＋每人最後一筆
   var SYNC_MAX_AGE = 12 * 3600 * 1000;      // 超過 12 小時沒同步就改回等後端判斷
   var STALE_MS = 16 * 3600 * 1000;          // 跟後端一樣：上班超過 16 小時當作漏打
-  var IDLE_MS = 15000;
-  var MODE_MS = 15000;
+  var IDLE_MS = 5000;              // Alan 10/16 改 5 秒
+  var MODE_MS = 5000;              // 從鏡頭真正打開才開始算
   var SCAN_MS = 150;
-  var NUDGE_MS = 5000;
+  var NUDGE_MS = 2500;
   var SWITCH_MS = 5000;
   var NET_TIMEOUT_MS = 25000;      // Google 後端閒置後第一次可能要 10 秒以上
   var WARM_MS = 4 * 60 * 1000;     // 每 4 分鐘連一下後端，讓打卡時回應快
@@ -286,8 +296,9 @@ body.nokey #setupMsg{display:block}
   function net(ok){
     var n = queue().length;
     document.getElementById('netState').textContent = ok
-      ? 'Online ・ Records go to the PTE attendance sheet'
-      : 'No internet ・ ' + n + ' record(s) kept on this tablet, will upload automatically';
+      ? '● Online' + (n ? ' ・ ' + n + ' uploading' : '')
+      : '● No internet ・ ' + n + ' record(s) saved on this tablet, will upload automatically';
+    document.getElementById('netState').style.color = ok ? '' : '#ffcc66';
   }
 
   /* ---------- 最近紀錄（只放這台平板今天的） ---------- */
@@ -328,6 +339,8 @@ body.nokey #setupMsg{display:block}
     var d = new Date();
     document.getElementById('clock').textContent = hms(d);
     document.getElementById('date').textContent = dayKey(d) + ' ' + ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()];
+    // 鏡頭還沒出畫面前不倒數（5 秒很短，不能被開鏡頭的時間吃掉）
+    if (mode && !busy && !(stream && video.readyState >= 2)){ modeAt = Date.now(); touchIdle(); }
     if (mode && !busy){
       var waited = Date.now() - modeAt;
       var leftS = Math.max(0, Math.ceil((MODE_MS - waited) / 1000));
@@ -509,7 +522,7 @@ body.nokey #setupMsg{display:block}
     clearTimeout(resetTimer);
     if (mode || busy) return;
     show('', 'Tap Clock In or Clock Out', '',
-      stream ? '' : 'The camera opens when you tap and turns off after you clock (or after 15 seconds without a scan)');
+      stream ? '' : 'Then show your card to the camera');
     clearTimeout(resetTimer);
   }
   function setMode(m, keepResult){
@@ -528,10 +541,12 @@ body.nokey #setupMsg{display:block}
   }
   function takePhoto(){
     if (!stream || !video.videoWidth) return '';
-    snap.width = 240; snap.height = 180;
+    // 照影片原本的比例縮小，平板直放時影片是直的，不壓扁
+    var sw = 240, sh = Math.round(240 * video.videoHeight / video.videoWidth) || 180;
+    snap.width = sw; snap.height = sh;
     var sctx = snap.getContext('2d');
-    sctx.translate(240, 0); sctx.scale(-1, 1);
-    sctx.drawImage(video, 0, 0, 240, 180);
+    sctx.translate(sw, 0); sctx.scale(-1, 1);
+    sctx.drawImage(video, 0, 0, sw, sh);
     sctx.setTransform(1,0,0,1,0,0);
     return snap.toDataURL('image/jpeg', 0.6).split(',')[1] || '';
   }
@@ -821,6 +836,13 @@ body.nokey #setupMsg{display:block}
       flush();
     }).catch(function(){ net(false); });
   }
+
+  // 打卡機不要自己關螢幕
+  function keepAwake(){
+    if (navigator.wakeLock && document.visibilityState === 'visible') navigator.wakeLock.request('screen').catch(function(){});
+  }
+  keepAwake();
+  document.addEventListener('visibilitychange', keepAwake);
 
   render();
   sync();
