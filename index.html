@@ -359,6 +359,41 @@ body.nokey #setupMsg{display:block}
   if (window.speechSynthesis) speechSynthesis.getVoices();
   // 名字全大寫時語音會一個字母一個字母念，改成首字大寫
   function niceName(n){ return String(n || '').toLowerCase().replace(/(^|[\s'-])([a-z])/g, function(m, a, b){ return a + b.toUpperCase(); }); }
+  // 本地同事的錄音（10/16 Alan 給）：上班 welcome.mp4、下班 knockoff.mp4，只播人聲那一段，播完再念名字；播不出來就整句用語音念
+  var CLIPS = { IN: { file: 'welcome.mp4', from: 0.6, to: 2.0 }, OUT: { file: 'knockoff.mp4', from: 0.8, to: 2.15 } };
+  function audioCtx(){ actx = actx || new (window.AudioContext || window.webkitAudioContext)(); return actx; }
+  // 開頁就先下載解碼好，打卡時直接播
+  Object.keys(CLIPS).forEach(function(k){
+    try {
+      var x = new XMLHttpRequest();
+      x.open('GET', CLIPS[k].file); x.responseType = 'arraybuffer';
+      x.onload = function(){
+        if (x.status !== 200) return;
+        audioCtx().decodeAudioData(x.response, function(buf){ CLIPS[k].buf = buf; }, function(){});
+      };
+      x.send();
+    } catch(e){}
+  });
+  function speakName(name){
+    if (!window.speechSynthesis || !name) return;
+    var v = pickVoice(/^en/i), u = new SpeechSynthesisUtterance(niceName(name));
+    if (v){ u.voice = v; u.lang = v.lang; } else u.lang = 'en-US';
+    u.rate = 0.95;
+    speechSynthesis.cancel(); speechSynthesis.speak(u);
+  }
+  function greet(type, name){
+    var c = CLIPS[type];
+    if (!c || !c.buf){ say(type, name); return; }
+    try {
+      var ctx = audioCtx();
+      if (ctx.resume) ctx.resume();
+      var src = ctx.createBufferSource(), g = ctx.createGain(), dur = Math.min(c.to, c.buf.duration) - c.from;
+      g.gain.value = 1.6;   // 錄音偏小聲，放大一點
+      src.buffer = c.buf; src.connect(g); g.connect(ctx.destination);
+      src.start(0, c.from, dur);
+      setTimeout(function(){ speakName(name); }, dur * 1000 + 150);
+    } catch(e){ say(type, name); }
+  }
   function say(kind, name){
     if (!window.speechSynthesis) return;
     var zu = pickVoice(/^zu/i), en = pickVoice(/^en/i);
@@ -374,7 +409,7 @@ body.nokey #setupMsg{display:block}
   function okSound(type, name){
     if (type === 'IN'){ beep(880, 120); setTimeout(function(){ beep(1320, 160); }, 140); }
     else { beep(1320, 120); setTimeout(function(){ beep(880, 160); }, 140); }
-    setTimeout(function(){ say(type === 'IN' ? 'IN' : 'OUT', name); }, 350);
+    setTimeout(function(){ greet(type === 'IN' ? 'IN' : 'OUT', name); }, 350);
   }
   function warnSound(){ beep(440, 180); setTimeout(function(){ beep(440, 180); }, 260); }
 
@@ -582,7 +617,7 @@ body.nokey #setupMsg{display:block}
     }
     var action = flag ? { label: label, ms: SWITCH_MS, fn: function(){ doSwitch(rid, false, queued); } } : null;
     if (flag){
-      warnSound(); setTimeout(function(){ say(type, String(who).split(' ・ ')[0]); }, 550);
+      warnSound(); setTimeout(function(){ greet(type, String(who).split(' ・ ')[0]); }, 550);
       show('warn', (type === 'IN' ? 'Clock In' : 'Clock Out') + ' recorded ⚠', who, time, FLAG_TEXT[flag], action);
     } else {
       okSound(type, String(who).split(' ・ ')[0]);
