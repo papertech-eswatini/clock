@@ -178,7 +178,9 @@ body.nokey #setupMsg{display:block}
   var KEY_STORE = 'pte_clock_key';
   var QUEUE_STORE = 'pte_clock_queue_v1';
   var RECENT_STORE = 'pte_clock_recent_v1';
-  var PHOTO_DELAY_MS = 1500;
+  var SYNC_STORE = 'pte_clock_sync_v1';     // 後端同步來的有效卡片雜湊＋每人最後一筆
+  var SYNC_MAX_AGE = 12 * 3600 * 1000;      // 超過 12 小時沒同步就改回等後端判斷
+  var STALE_MS = 16 * 3600 * 1000;          // 跟後端一樣：上班超過 16 小時當作漏打
   var IDLE_MS = 15000;
   var MODE_MS = 15000;
   var SCAN_MS = 150;
@@ -237,10 +239,12 @@ body.nokey #setupMsg{display:block}
     if (flushing || !KEY) return;
     var q = queue();
     if (!q.length){ net(true); return; }
-    flushing = true;
     var it = q[0];
+    // 有黃字的那筆留 5 秒給員工按「I meant…」，之後才上傳
+    if (it.notBefore && it.notBefore > Date.now()){ setTimeout(flush, it.notBefore - Date.now() + 50); return; }
+    flushing = true;
     var p = it.uploaded ? Promise.resolve({ ok: true }) :
-      post({ action: 'clock', card: it.card, type: it.type, rid: it.rid, ts: it.ts, offline: true, device: DEVICE });
+      post({ action: 'clock', card: it.card, type: it.type, rid: it.rid, ts: it.ts, offline: !it.live, live: !!it.live, edited: it.edited || '', device: DEVICE });
     p.then(function(res){
       if (!res.ok && res.code !== 'DUP'){
         // 後端拒收（例如舊卡）：記到最近紀錄讓人資看到，不再重送
@@ -248,6 +252,7 @@ body.nokey #setupMsg{display:block}
         return 'drop';
       }
       if (res.ok) markRecent(it.rid, { name: res.name, flag: res.flag || '', type: res.type, wait: false });
+      else markRecent(it.rid, { wait: false });
       if (it.photo) return post({ action: 'photo', rid: it.rid, data: it.photo }).then(function(){ return 'drop'; });
       return 'drop';
     }).then(function(){
@@ -340,35 +345,36 @@ body.nokey #setupMsg{display:block}
       o.start(); o.stop(actx.currentTime + ms/1000);
     } catch(e){}
   }
-  // 祖魯語語音：先播同資料夾 ok.mp3／fail.mp3，沒有就用瀏覽器的祖魯語語音，都沒有就只有提示音
-  var ZULU = { ok: { file: 'ok.mp3', text: 'Kuphumelele' }, fail: { file: 'fail.mp3', text: 'Akuphumelelanga, zama futhi' } };
-  var audioOk = {};
-  function zuluVoice(){
+  // 語音：有祖魯語語音（例如 Edge）就念祖魯語，沒有就念英文（Android 都有）；成功連名字一起念
+  var TALK = {
+    zu: { IN: 'Siyakwamukela, ', OUT: 'Hamba kahle, ', fail: 'Akuphumelelanga, zama futhi' },
+    en: { IN: 'Welcome, ', OUT: 'Goodbye, ', fail: 'Not clocked. Please try again.' }
+  };
+  function pickVoice(re){
     if (!window.speechSynthesis) return null;
     var vs = speechSynthesis.getVoices();
-    for (var i = 0; i < vs.length; i++) if (/^zu/i.test(vs[i].lang)) return vs[i];
+    for (var i = 0; i < vs.length; i++) if (re.test(vs[i].lang)) return vs[i];
     return null;
   }
   if (window.speechSynthesis) speechSynthesis.getVoices();
-  function speakTts(kind){
-    var v = zuluVoice(); if (!v) return;
-    var u = new SpeechSynthesisUtterance(ZULU[kind].text);
-    u.voice = v; u.lang = v.lang; u.rate = 0.95;
+  // 名字全大寫時語音會一個字母一個字母念，改成首字大寫
+  function niceName(n){ return String(n || '').toLowerCase().replace(/(^|[\s'-])([a-z])/g, function(m, a, b){ return a + b.toUpperCase(); }); }
+  function say(kind, name){
+    if (!window.speechSynthesis) return;
+    var zu = pickVoice(/^zu/i), en = pickVoice(/^en/i);
+    var lang = zu ? 'zu' : 'en';
+    var text = TALK[lang][kind] + (kind === 'fail' ? '' : niceName(name));
+    var u = new SpeechSynthesisUtterance(text);
+    var v = zu || en;
+    if (v){ u.voice = v; u.lang = v.lang; } else u.lang = 'en-US';
+    u.rate = 0.95;
     speechSynthesis.cancel(); speechSynthesis.speak(u);
   }
-  function say(kind){
-    if (audioOk[kind] === false){ speakTts(kind); return; }
-    var a = new Audio(ZULU[kind].file);
-    a.onerror = function(){ audioOk[kind] = false; speakTts(kind); };
-    a.play().then(function(){ audioOk[kind] = true; }).catch(function(){
-      if (audioOk[kind] !== true){ audioOk[kind] = false; speakTts(kind); }
-    });
-  }
   function failSound(){ beep(220, 400); setTimeout(function(){ say('fail'); }, 450); }
-  function okSound(type){
+  function okSound(type, name){
     if (type === 'IN'){ beep(880, 120); setTimeout(function(){ beep(1320, 160); }, 140); }
     else { beep(1320, 120); setTimeout(function(){ beep(880, 160); }, 140); }
-    setTimeout(function(){ say('ok'); }, 350);
+    setTimeout(function(){ say(type === 'IN' ? 'IN' : 'OUT', name); }, 350);
   }
   function warnSound(){ beep(440, 180); setTimeout(function(){ beep(440, 180); }, 260); }
 
@@ -452,14 +458,73 @@ body.nokey #setupMsg{display:block}
       show('bad', '✖ Not clocked: invalid card', '', 'This is not a PTE clock card. Please use your own card or ask HR.');
       return;
     }
-    var rid = uid(), ts = Date.now();
+    // 讀到卡當下就拍照，人不用等
+    var photo = takePhoto(); flash();
     busy = true;
     setMode(null, true);
+    var S = lsGet(SYNC_STORE, null), id = card.slice(0, 7);
+    var e = S && S.cards && Date.now() - S.at < SYNC_MAX_AGE ? S.cards[id] : null;
+    // 卡片在同步名單裡就當場判斷；不在（新發的卡、沒同步）就等後端判斷，不會誤擋
+    if (!e){ serverClock(card, type, photo); return; }
+    sha256(card).then(function(h){
+      if (h === e.h) localClock(card, type, id, e.n, photo); else serverClock(card, type, photo);
+    }).catch(function(){ serverClock(card, type, photo); });
+  }
+
+  function sha256(s){
+    if (!window.crypto || !crypto.subtle || !window.TextEncoder) return Promise.reject(new Error('no crypto'));
+    return crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)).then(function(buf){
+      return Array.prototype.map.call(new Uint8Array(buf), function(b){ return ('0' + b.toString(16)).slice(-2); }).join('');
+    });
+  }
+
+  // 這個人最後一筆：後端同步來的，加上這台平板之後打的
+  function lastFor(id, skipRid){
+    var S = lsGet(SYNC_STORE, null), best = null;
+    var l = S && S.last && S.last[id];
+    if (l) best = { type: l.t, ts: l.ts, time: l.tm };
+    recent().forEach(function(r){
+      if (r.id !== id || !r.ts || r.rid === skipRid || /^REJECTED/.test(r.flag || '')) return;
+      if (!best || r.ts >= best.ts) best = { type: r.type, ts: r.ts, time: r.time };
+    });
+    return best;
+  }
+  function flagFor(type, last, ts){
+    if (type === 'IN') return (last && last.type === 'IN') ? 'NO_OUT' : '';
+    if (!last || last.type === 'OUT' || ts - last.ts > STALE_MS) return 'NO_IN';
+    return '';
+  }
+
+  // 平板當場判斷：存進佇列、馬上顯示結果，背景再上傳
+  function localClock(card, type, id, name, photo){
+    var ts = Date.now(), last = lastFor(id);
+    if (last && ts - last.ts < 60000){
+      busy = false; beep(440, 150);
+      show('warn', 'Already clocked', name,
+        'Your ' + (last.type === 'IN' ? 'Clock In' : 'Clock Out') + ' at ' + last.time + ' is recorded. Scans within 60 seconds are ignored.');
+      afterResult(); return;
+    }
+    var flag = flagFor(type, last, ts), rid = uid(), t = new Date(ts);
+    var item = { rid: rid, card: card, type: type, ts: ts, photo: photo, live: true, notBefore: flag ? ts + SWITCH_MS + 500 : 0 };
+    var q = queue(); q.push(item);
+    if (!setQueue(q)){ item.photo = ''; if (!setQueue(q)){ serverClock(card, type, photo); return; } }
+    addRecent({ rid: rid, day: dayKey(t), time: hms(t), ts: ts, id: id, name: name, type: type, flag: flag, wait: true });
+    render();
+    busy = false;
+    resultFor(rid, type, name + ' ・ ' + id, hms(t), flag, false, true);
+    touchIdle(); afterResult();
+    flush();
+  }
+
+  // 等後端判斷（沒同步資料、新卡）
+  function serverClock(card, type, photo){
+    var rid = uid(), ts = Date.now();
     showWaiting('', 'Saving…', 'Please hold on');
+    afterResult();
     post({ action: 'clock', card: card, type: type, rid: rid, ts: ts, device: DEVICE }).then(function(res){
       net(true);
+      busy = false;
       if (!res.ok){
-        busy = false;
         if (res.code === 'DUP'){
           beep(440, 150);
           show('warn', 'Already clocked', res.name || '',
@@ -475,79 +540,88 @@ body.nokey #setupMsg{display:block}
         afterResult();
         return;
       }
-      addRecent({ rid: rid, day: dayKey(new Date(ts)), time: res.time, id: res.id, name: res.name, type: res.type, flag: res.flag || '', wait: false });
+      addRecent({ rid: rid, day: dayKey(new Date(ts)), time: res.time, ts: ts, id: res.id, name: res.name, type: res.type, flag: res.flag || '', wait: false });
       render();
-      resultFor(rid, res.type, res.name + ' ・ ' + res.id, res.time, res.flag, false);
-      later(function(){
-        var photo = takePhoto(); flash();
-        if (photo) post({ action: 'photo', rid: rid, data: photo }).catch(function(){
-          // 照片傳不上去就排進佇列補傳
-          var q = queue(); q.push({ rid: rid, uploaded: true, photo: photo }); setQueue(q); render();
-        });
-        busy = false; touchIdle(); afterResult();
+      resultFor(rid, res.type, res.name + ' ・ ' + res.id, res.time, res.flag, false, false);
+      if (photo) post({ action: 'photo', rid: rid, data: photo }).catch(function(){
+        // 照片傳不上去就排進佇列補傳
+        var q = queue(); q.push({ rid: rid, uploaded: true, photo: photo }); setQueue(q); render();
       });
+      touchIdle(); afterResult();
     }).catch(function(){
       // 斷網：先存在平板，之後自動補傳
-      var item = { rid: rid, card: card, type: type, ts: ts, photo: '' };
+      var item = { rid: rid, card: card, type: type, ts: ts, photo: photo };
       var q = queue(); q.push(item);
-      if (!setQueue(q)){
+      if (!setQueue(q)){ item.photo = ''; if (!setQueue(q)){
         net(false);
         busy = false; failSound();
         show('bad', '✖ Not clocked: no internet and tablet storage full', '', 'Please tell HR.');
         afterResult(); return;
-      }
+      } }
       net(false);
+      busy = false;
       var t = new Date(ts);
-      addRecent({ rid: rid, day: dayKey(t), time: hms(t), id: card.slice(0, 7), name: card.slice(0, 7), type: type, flag: '', wait: true });
+      addRecent({ rid: rid, day: dayKey(t), time: hms(t), ts: ts, id: card.slice(0, 7), name: card.slice(0, 7), type: type, flag: '', wait: true });
       render();
       warnSound();
       resultFor(rid, type, card.slice(0, 7), hms(t), '', true);
-      later(function(){
-        var photo = takePhoto(); flash();
-        var q2 = queue(); q2.forEach(function(x){ if (x.rid === rid) x.photo = photo; });
-        if (!setQueue(q2)){ q2.forEach(function(x){ if (x.rid === rid) x.photo = ''; }); setQueue(q2); }
-        busy = false; touchIdle(); afterResult();
-      });
+      touchIdle(); afterResult();
     });
   }
 
-  function later(fn){ setTimeout(fn, PHOTO_DELAY_MS); }
   function afterResult(){ if (!mode) stopCam(); }
 
-  function resultFor(rid, type, who, time, flag, offline){
+  function resultFor(rid, type, who, time, flag, offline, queued){
     var other = type === 'IN' ? 'OUT' : 'IN';
-    var action = (flag || offline) ? null : null;
-    if (flag) action = { label: 'I meant ' + (other === 'IN' ? 'CLOCK IN' : 'CLOCK OUT'), ms: SWITCH_MS, fn: function(){ doSwitch(rid, offline); } };
+    var label = 'I meant ' + (other === 'IN' ? 'CLOCK IN' : 'CLOCK OUT');
     if (offline){
       show('warn', (type === 'IN' ? 'Clock In' : 'Clock Out') + ' saved on this tablet', who,
-        time + ' ・ No internet now. It will upload automatically. 📸 Look at the camera',
-        '', { label: 'I meant ' + (other === 'IN' ? 'CLOCK IN' : 'CLOCK OUT'), ms: SWITCH_MS, fn: function(){ doSwitch(rid, true); } });
+        time + ' ・ No internet now. It will upload automatically.',
+        '', { label: label, ms: SWITCH_MS, fn: function(){ doSwitch(rid, true); } });
       return;
     }
+    var action = flag ? { label: label, ms: SWITCH_MS, fn: function(){ doSwitch(rid, false, queued); } } : null;
     if (flag){
-      warnSound();
-      show('warn', (type === 'IN' ? 'Clock In' : 'Clock Out') + ' recorded ⚠', who, time + ' ・ 📸 Look at the camera', FLAG_TEXT[flag], action);
+      warnSound(); setTimeout(function(){ say(type, String(who).split(' ・ ')[0]); }, 550);
+      show('warn', (type === 'IN' ? 'Clock In' : 'Clock Out') + ' recorded ⚠', who, time, FLAG_TEXT[flag], action);
     } else {
-      okSound(type);
-      show(type === 'IN' ? 'in' : 'out', type === 'IN' ? 'Clock In ✔' : 'Clock Out ✔', who, time + ' ・ 📸 Look at the camera');
+      okSound(type, String(who).split(' ・ ')[0]);
+      show(type === 'IN' ? 'in' : 'out', type === 'IN' ? 'Clock In ✔' : 'Clock Out ✔', who, time);
     }
   }
 
-  function doSwitch(rid, offline){
+  function doSwitch(rid, offline, queued){
     switched[rid] = true;
-    if (offline){
-      var q = queue(), t = '';
-      q.forEach(function(x){ if (x.rid === rid){ x.type = x.type === 'IN' ? 'OUT' : 'IN'; t = x.type; } });
-      setQueue(q); markRecent(rid, { type: t }); render();
-      beep(880, 120);
-      show('warn', 'Changed to ' + (t === 'IN' ? 'Clock In' : 'Clock Out'), '', 'Saved on this tablet, will upload automatically');
-      return;
+    if (offline || queued){
+      // 還沒上傳：直接改平板上的那筆，並留下修改紀錄給人資
+      var q = queue(), it = null;
+      q.forEach(function(x){ if (x.rid === rid && !x.uploaded) it = x; });
+      if (it){
+        var from = it.type, t = from === 'IN' ? 'OUT' : 'IN';
+        it.type = t; it.notBefore = 0;
+        it.edited = 'Switched ' + from + '→' + t + ' on tablet at ' + hms(new Date());
+        setQueue(q);
+        if (offline){
+          markRecent(rid, { type: t }); render();
+          beep(880, 120);
+          show('warn', 'Changed to ' + (t === 'IN' ? 'Clock In' : 'Clock Out'), '', 'Saved on this tablet, will upload automatically');
+          return;
+        }
+        var r0 = recent().filter(function(x){ return x.rid === rid; })[0] || {};
+        var fl = flagFor(t, lastFor(it.card.slice(0, 7), rid), it.ts);
+        markRecent(rid, { type: t, flag: fl }); render();
+        var big = 'Changed to ' + (t === 'IN' ? 'Clock In' : 'Clock Out');
+        if (fl){ warnSound(); show('warn', big + ' ⚠', r0.name, 'Time ' + r0.time + ' ・ The change is recorded for HR', FLAG_TEXT[fl]); }
+        else { okSound(t, r0.name);show(t === 'IN' ? 'in' : 'out', big + ' ✔', r0.name, 'Time ' + r0.time + ' ・ The change is recorded for HR'); }
+        flush();
+        return;
+      }
     }
     post({ action: 'switch', rid: rid }).then(function(res){
       if (!res.ok){ failSound(); show('bad', '✖ Change not saved', '', (res.msg || '') + ' ・ Please tell HR.'); return; }
       markRecent(rid, { type: res.type, flag: res.flag || '' }); render();
       if (res.flag){ warnSound(); show('warn', 'Changed to ' + (res.type === 'IN' ? 'Clock In' : 'Clock Out') + ' ⚠', res.name, 'Time ' + res.time + ' ・ The change is recorded for HR', FLAG_TEXT[res.flag]); }
-      else { okSound(res.type); show(res.type === 'IN' ? 'in' : 'out', 'Changed to ' + (res.type === 'IN' ? 'Clock In ✔' : 'Clock Out ✔'), res.name, 'Time ' + res.time + ' ・ The change is recorded for HR'); }
+      else { okSound(res.type, res.name);show(res.type === 'IN' ? 'in' : 'out', 'Changed to ' + (res.type === 'IN' ? 'Clock In ✔' : 'Clock Out ✔'), res.name, 'Time ' + res.time + ' ・ The change is recorded for HR'); }
     }).catch(function(){ failSound(); show('bad', '✖ Change not saved: no internet', '', 'Please tell HR.'); });
   }
 
@@ -640,19 +714,24 @@ body.nokey #setupMsg{display:block}
       if (!r.ok){ KEY = keep; out.style.color = '#c62828'; out.textContent = 'Wrong setup code. Please check and try again.'; return; }
       lsSet(KEY_STORE, code);
       document.body.classList.remove('nokey');
-      net(true); render(); flush();
+      net(true); render(); sync();
     }).catch(function(){ KEY = keep; out.style.color = '#c62828'; out.textContent = 'No internet. Please connect and try again.'; });
   };
 
-  render();
-  if (KEY){
-    post({ action: 'ping' }).then(function(r){ net(!!r.ok); if (!r.ok) document.body.classList.add('nokey'); flush(); })
-      .catch(function(){ net(false); });
+  // 同步有效卡片與每人最後一筆（順便讓後端保持清醒）
+  function sync(){
+    if (!KEY) return;
+    post({ action: 'sync' }).then(function(r){
+      if (!r.ok && r.code === 'KEY'){ document.body.classList.add('nokey'); return; }
+      net(true);
+      if (r.ok && r.cards) lsSet(SYNC_STORE, { cards: r.cards, last: r.last || {}, at: Date.now() });
+      flush();
+    }).catch(function(){ net(false); });
   }
-  setInterval(function(){
-    if (!KEY || busy) return;
-    post({ action: 'ping' }).then(function(r){ if (r.ok){ net(true); flush(); } }).catch(function(){ net(false); });
-  }, WARM_MS);
+
+  render();
+  sync();
+  setInterval(function(){ if (!busy) sync(); }, WARM_MS);
   if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) listCams().catch(function(){});
 })();
 </script>
