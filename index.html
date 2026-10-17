@@ -116,6 +116,17 @@ video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:
 .big-btn.out .t2{color:#e9dcc3;opacity:1}
 .chev{flex:none;width:min(14cqh,6cqw);height:min(14cqh,6cqw);fill:none;stroke:currentColor;stroke-width:1.6;opacity:.7}
 .big-btn.out .chev{stroke:var(--gold);opacity:1}
+/* 加班上班／加班下班（Alan 10/17）：放在兩顆大按鈕下面，深藍玻璃＋金色虛線框，看得出是另一種打卡 */
+.otrow{flex:none;display:flex;gap:14px;height:min(13vh,120px)}
+.ot-btn{flex:1;min-width:0;border:0;padding:0;background:none;cursor:pointer;font:inherit;display:flex}
+.otb{position:relative;flex:1;display:flex;align-items:center;justify-content:center;gap:12px;overflow:hidden;border-radius:16px;
+  border:1.5px dashed rgba(216,184,120,.8);background:rgba(10,22,40,.72);color:#fff;padding:0 12px;transition:transform .12s ease,filter .12s ease}
+.ot-btn:active .otb{transform:scale(.98) translateY(1px);filter:brightness(.94)}
+.otb svg{flex:none;width:clamp(26px,5vw,40px);height:clamp(26px,5vw,40px);fill:none;stroke:var(--gold);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.otb b{display:block;font-size:clamp(18px,3.6vw,30px);font-weight:800;line-height:1.05;white-space:nowrap}
+.otb small{display:block;font-size:clamp(10px,1.7vw,14px);color:#e9dcc3;margin-top:3px;white-space:nowrap}
+#modeBar.ot{box-shadow:inset 0 -4px 0 #ffb74d}
+.tag.ot{background:#fff1dc;color:#b26a00;margin-left:4px}
 .ripple{position:absolute;border-radius:50%;background:rgba(255,255,255,.45);transform:scale(0);animation:ripple .6s ease-out forwards;pointer-events:none}
 @keyframes ripple{to{transform:scale(1);opacity:0}}
 #flash{position:absolute;inset:0;background:#fff;opacity:0;transition:opacity .12s;pointer-events:none}
@@ -247,6 +258,17 @@ body.nokey #setupMsg{display:block}
           <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
         </span>
       </button>
+      <!-- 加班打卡（Alan 10/17）：來加班就按這兩顆取代一般上下班，自動送主管審核；沒核准就當一般上下班 -->
+      <div class="otrow">
+        <button class="ot-btn" data-mode="IN" data-ot="1">
+          <span class="otb"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5"/><path d="M9 2h6"/></svg>
+            <span><b>OT in</b><small>Overtime start · needs approval</small></span></span>
+        </button>
+        <button class="ot-btn" data-mode="OUT" data-ot="1">
+          <span class="otb"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5"/><path d="M9 2h6"/></svg>
+            <span><b>OT out</b><small>Overtime end · needs approval</small></span></span>
+        </button>
+      </div>
     </div>
     <div id="flash"></div>
   </div>
@@ -370,6 +392,7 @@ body.nokey #setupMsg{display:block}
   var camwrap = document.getElementById('camwrap');
   var resultEl = document.getElementById('result');
   var stream = null, loopId = 0, idleAt = 0, mode = null, modeAt = 0, busy = false;
+  var modeOT = false, clockOT = false;   // 加班上班／加班下班（10/17）：modeOT＝現在按的是加班鈕，clockOT＝正在存的這筆是加班打卡
   var lastText = '', lastTextAt = 0, resetTimer = null, lastShowAt = 0;
 
   function pad(n){ return (n < 10 ? '0' : '') + n; }
@@ -401,7 +424,7 @@ body.nokey #setupMsg{display:block}
     if (it.notBefore && it.notBefore > Date.now()){ setTimeout(flush, it.notBefore - Date.now() + 50); return; }
     flushing = true;
     var p = it.uploaded ? Promise.resolve({ ok: true }) :
-      post({ action: 'clock', card: it.card, type: it.type, rid: it.rid, ts: it.ts, offline: !it.live, live: !!it.live, edited: it.edited || '', device: DEVICE });
+      post({ action: 'clock', card: it.card, type: it.type, rid: it.rid, ts: it.ts, offline: !it.live, live: !!it.live, edited: it.edited || '', device: DEVICE, ot: !!it.ot });
     p.then(function(res){
       if (!res.ok && res.code !== 'DUP'){
         // 後端拒收（例如舊卡）：記到最近紀錄讓人資看到，不再重送
@@ -453,6 +476,7 @@ body.nokey #setupMsg{display:block}
       var c = document.createElement('td');
       c.innerHTML = r.wait ? '<span class="tag wait">' + (r.type === 'IN' ? 'Clock In' : 'Clock Out') + ' ・ waiting</span>'
         : (r.type === 'IN' ? '<span class="tag in">Clock In</span>' : '<span class="tag out">Clock Out</span>');
+      if (r.ot) c.innerHTML += '<span class="tag ot">OT</span>';
       var d = document.createElement('td'); d.className = 'fl';
       d.textContent = !r.flag ? '' : r.flag === 'NO_OUT' ? 'Missing Clock Out' : r.flag === 'NO_IN' ? 'Missing Clock In' : r.flag;
       tr.appendChild(a); tr.appendChild(b); tr.appendChild(c); tr.appendChild(d);
@@ -679,15 +703,17 @@ body.nokey #setupMsg{display:block}
     var bar = document.getElementById('modeBar');
     if (m){
       camwrap.classList.add('scan');
-      bar.className = m === 'IN' ? 'in' : 'out';
-      document.getElementById('modeText').textContent = m === 'IN' ? '➜ CLOCK IN: scan your card' : '⇠ CLOCK OUT: scan your card';   // 不用太陽：上班不一定是白天（Alan 10/16，有晚班）
+      bar.className = (m === 'IN' ? 'in' : 'out') + (modeOT ? ' ot' : '');
+      document.getElementById('modeText').textContent = modeOT
+        ? (m === 'IN' ? '⏱ OT IN: scan your card' : '⏱ OT OUT: scan your card')
+        : (m === 'IN' ? '➜ CLOCK IN: scan your card' : '⇠ CLOCK OUT: scan your card');   // 不用太陽：上班不一定是白天（Alan 10/16，有晚班）
       lastText = '';
       if (enrolling){
         document.getElementById('modeText').textContent = '☺ ENROL FACE: scan the card';
         showWaiting('', 'Enrol a face', 'Scan the employee card, then look at the camera');
       } else showWaiting('', 'Waiting for your card', 'NOT clocked yet ・ Hold your card in the yellow box');
     } else {
-      enrolling = false;
+      enrolling = false; modeOT = false;
       camwrap.classList.remove('scan');
       if (!keepResult) idleMsg();
     }
@@ -723,6 +749,7 @@ body.nokey #setupMsg{display:block}
     var photo = takePhoto(); flash();
     // 人臉試用：有登錄的人另外留一張大一點的畫面，結果出來後再背景比對
     var rid = uid();   // 先定紀錄編號，人臉結果才對得到這一筆
+    clockOT = modeOT;  // setMode(null) 會清掉 modeOT，先記下這筆是不是加班打卡
     var fimg = faceGrab(card.slice(0, 7));
     if (fimg) setTimeout(function(){ faceCheck(fimg, card.slice(0, 7), rid); }, 800);
     busy = true;
@@ -771,10 +798,10 @@ body.nokey #setupMsg{display:block}
     }
     var flag = flagFor(type, last, ts), t = new Date(ts);
     rid = rid || uid();
-    var item = { rid: rid, card: card, type: type, ts: ts, photo: photo, live: true, notBefore: flag ? ts + SWITCH_MS + 500 : 0 };
+    var item = { rid: rid, card: card, type: type, ts: ts, photo: photo, live: true, ot: clockOT, notBefore: flag ? ts + SWITCH_MS + 500 : 0 };
     var q = queue(); q.push(item);
     if (!setQueue(q)){ item.photo = ''; if (!setQueue(q)){ serverClock(card, type, photo, rid); return; } }
-    addRecent({ rid: rid, day: dayKey(t), time: hms(t), ts: ts, id: id, name: name, type: type, flag: flag, wait: true });
+    addRecent({ rid: rid, day: dayKey(t), time: hms(t), ts: ts, id: id, name: name, type: type, flag: flag, wait: true, ot: clockOT });
     render();
     busy = false;
     resultFor(rid, type, name + ' ・ ' + id, hms(t), flag, false, true);
@@ -788,7 +815,7 @@ body.nokey #setupMsg{display:block}
     rid = rid || uid();
     showWaiting('', 'Saving…', 'Please hold on');
     afterResult();
-    post({ action: 'clock', card: card, type: type, rid: rid, ts: ts, device: DEVICE }).then(function(res){
+    post({ action: 'clock', card: card, type: type, rid: rid, ts: ts, device: DEVICE, ot: clockOT }).then(function(res){
       net(true);
       busy = false;
       if (!res.ok){
@@ -807,7 +834,7 @@ body.nokey #setupMsg{display:block}
         afterResult();
         return;
       }
-      addRecent({ rid: rid, day: dayKey(new Date(ts)), time: res.time, ts: ts, id: res.id, name: res.name, type: res.type, flag: res.flag || '', wait: false });
+      addRecent({ rid: rid, day: dayKey(new Date(ts)), time: res.time, ts: ts, id: res.id, name: res.name, type: res.type, flag: res.flag || '', wait: false, ot: clockOT });
       render();
       resultFor(rid, res.type, res.name + ' ・ ' + res.id, res.time, res.flag, false, false);
       if (photo) post({ action: 'photo', rid: rid, data: photo }).catch(function(){
@@ -817,7 +844,7 @@ body.nokey #setupMsg{display:block}
       touchIdle(); afterResult();
     }).catch(function(){
       // 斷網：先存在平板，之後自動補傳
-      var item = { rid: rid, card: card, type: type, ts: ts, photo: photo };
+      var item = { rid: rid, card: card, type: type, ts: ts, photo: photo, ot: clockOT };
       var q = queue(); q.push(item);
       if (!setQueue(q)){ item.photo = ''; if (!setQueue(q)){
         net(false);
@@ -828,7 +855,7 @@ body.nokey #setupMsg{display:block}
       net(false);
       busy = false;
       var t = new Date(ts);
-      addRecent({ rid: rid, day: dayKey(t), time: hms(t), ts: ts, id: card.slice(0, 7), name: card.slice(0, 7), type: type, flag: '', wait: true });
+      addRecent({ rid: rid, day: dayKey(t), time: hms(t), ts: ts, id: card.slice(0, 7), name: card.slice(0, 7), type: type, flag: '', wait: true, ot: clockOT });
       render();
       warnSound();
       resultFor(rid, type, card.slice(0, 7), hms(t), '', true);
@@ -849,12 +876,15 @@ body.nokey #setupMsg{display:block}
       return;
     }
     var action = flag ? { label: label, ms: SWITCH_MS, fn: function(){ doSwitch(rid, false, queued); } } : null;
+    // 加班打卡：標題寫 OT，下面註明要主管核准（10/17）
+    var nm = (clockOT ? 'OT ' : '') + (type === 'IN' ? 'Clock In' : 'Clock Out');
+    var tm = time + (clockOT ? ' ・ Overtime needs supervisor approval' : '');
     if (flag){
       warnSound(); setTimeout(function(){ greet(type, String(who).split(' ・ ')[0]); }, 550);
-      show('warn', (type === 'IN' ? 'Clock In' : 'Clock Out') + ' recorded ⚠', who, time, FLAG_TEXT[flag], action);
+      show('warn', nm + ' recorded ⚠', who, tm, FLAG_TEXT[flag], action);
     } else {
       okSound(type, String(who).split(' ・ ')[0]);
-      show(type === 'IN' ? 'in' : 'out', type === 'IN' ? 'Clock In ✔' : 'Clock Out ✔', who, time);
+      show(type === 'IN' ? 'in' : 'out', nm + ' ✔', who, tm);
     }
   }
 
@@ -1238,13 +1268,13 @@ body.nokey #setupMsg{display:block}
   // 有人登錄過就在開頁 15 秒後先把模型載好，打卡時不用等
   if (Object.keys(faceDb().faces).length) setTimeout(function(){ faceReady().catch(function(){}); }, 15000);
 
-  [].forEach.call(document.querySelectorAll('.big-btn'), function(b){
+  [].forEach.call(document.querySelectorAll('.big-btn, .ot-btn'), function(b){
     // 按下：在手指位置放一圈水波，0.18 秒後才切到刷卡畫面，讓員工看得到按到了
     b.addEventListener('pointerdown', function(ev){
       // 手指按下的這一下瀏覽器才允許出聲：先把聲音和語音叫醒，打卡成功時才念得出來
       try { var ac = audioCtx(); if (ac.state !== 'running' && ac.resume) ac.resume(); } catch(e){}
       if (window.speechSynthesis && speechSynthesis.paused) speechSynthesis.resume();
-      var orb = b.querySelector('.orb'); if (!orb) return;
+      var orb = b.querySelector('.orb, .otb'); if (!orb) return;
       var r = orb.getBoundingClientRect(), s = Math.max(r.width, r.height) * 2;
       var w = document.createElement('span'); w.className = 'ripple';
       w.style.width = w.style.height = s + 'px';
@@ -1255,6 +1285,7 @@ body.nokey #setupMsg{display:block}
       if (busy) return;
       touchIdle();
       setTimeout(function(){
+        modeOT = b.getAttribute('data-ot') === '1';
         setMode(b.getAttribute('data-mode'));
         if (!stream) startCam().catch(function(){});
       }, 180);
@@ -1306,7 +1337,7 @@ body.nokey #setupMsg{display:block}
   // 自動更新（Alan 10/16）：每 5 分鐘、以及 App 切回前景時，看 GitHub 上的版本號跟這頁一不一樣；
   // 不一樣就等沒人在打卡（沒在刷卡、沒在存、鏡頭關著、結果訊息已顯示超過 10 秒）再重新整理。
   // 斷網佇列存在平板裡，重新整理不會掉資料。每次上傳新版要把 APP_VER 改掉，平板才會換。
-  var APP_VER = '2026-10-16-5';
+  var APP_VER = '2026-10-17-1';
   var newVer = '';
   // ?setup 顯示目前版本，發現新版還沒換時也寫出來，一眼確認平板有沒有更新
   document.getElementById('appVer').textContent = APP_VER;
