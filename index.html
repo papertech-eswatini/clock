@@ -302,6 +302,7 @@ body.nokey #setupMsg{display:block}
     <button id="faceEnrol">＋ Enrol a face</button>
     Match if distance ≤ <input type="number" id="faceThr" min="0.3" max="0.7" step="0.02" style="width:72px">
     <span id="faceModel">Model not loaded</span>
+    <span id="faceCloud"></span>
   </div>
   <div class="stats" style="margin-top:12px">
     <div class="stat"><b id="fN">0</b><small>Checks</small></div>
@@ -1247,8 +1248,9 @@ body.nokey #setupMsg{display:block}
       if (!lsSet(FACE_STORE, F)){ beep(220, 300); showWaiting('bad', 'Tablet storage full', 'Clear results and try again'); return; }
       beep(880, 120); setTimeout(function(){ beep(1320, 160); }, 140);
       setMode(null, true);
-      show('in', 'Face enrolled ✔', name === id ? id : name + ' ・ ' + id, got.length + ' photos saved on this tablet');
+      show('in', 'Face enrolled ✔', name === id ? id : name + ' ・ ' + id, got.length + ' photos saved, backing up to the cloud');
       renderFace(); afterResult();
+      faceOp('save', id);
     }).catch(function(err){
       busy = false; beep(220, 300); lastText = '';
       showWaiting('bad', 'Face model failed to load', (err && err.message || '') + ' ・ Check the internet and try again');
@@ -1280,6 +1282,7 @@ body.nokey #setupMsg{display:block}
       b.onclick = function(){
         if (faceDelArm !== id){ faceDelArm = id; renderFace(); return; }
         var G = faceDb(); delete G.faces[id]; lsSet(FACE_STORE, G); faceDelArm = ''; renderFace();
+        faceOp('del', id);   // 雲端也刪，其他平板同步時跟著刪
       };
       td.appendChild(b); tr.appendChild(td); fl.appendChild(tr);
     });
@@ -1324,6 +1327,71 @@ body.nokey #setupMsg{display:block}
     document.body.appendChild(a); a.click(); a.remove();
   };
   renderFace();
+  /* 臉部特徵雲端備份（Alan 10/17：以後會在不同平板用）：登錄／刪除排進 FACEOPS 佇列送後端（Face Data 分頁）；
+     每次 sync 拿到雲端版本號 faceVer，佇列清空且版本不同就整份下載換掉本機（雲端為準）。
+     這版第一次執行會把平板上已登錄的人全部上傳一次（F.cloud 旗標）。 */
+  var FACEOPS_STORE = 'pte_clock_faceops_v1', faceOpsBusy = false, faceVerWanted = '';
+  function faceOp(op, id){
+    var q = lsGet(FACEOPS_STORE, []).filter(function(x){ return x.id !== id; });
+    q.push({ op: op, id: id }); lsSet(FACEOPS_STORE, q);
+    faceCloudText(); faceOpsFlush();
+  }
+  function faceCloudSync(ver){
+    var F = faceDb();
+    if (!F.cloud){
+      var q = lsGet(FACEOPS_STORE, []);
+      Object.keys(F.faces).forEach(function(id){ if (!q.some(function(x){ return x.id === id; })) q.push({ op: 'save', id: id }); });
+      lsSet(FACEOPS_STORE, q);
+      F.cloud = 1; lsSet(FACE_STORE, F);
+    }
+    faceVerWanted = ver;
+    faceOpsFlush();
+  }
+  function faceOpsFlush(){
+    if (faceOpsBusy || !KEY) return;
+    var q = lsGet(FACEOPS_STORE, []);
+    if (!q.length){
+      if (faceVerWanted && faceVerWanted !== faceDb().ver) faceLoadCloud();
+      faceCloudText(); return;
+    }
+    var it = q[0], F = faceDb(), body;
+    if (it.op === 'save'){
+      var f = F.faces[it.id];
+      if (!f){ lsSet(FACEOPS_STORE, q.slice(1)); faceOpsFlush(); return; }
+      body = { action: 'faceSave', id: it.id, n: f.n, d: f.d, at: f.at, device: DEVICE };
+    } else body = { action: 'faceDel', id: it.id };
+    faceOpsBusy = true;
+    post(body).then(function(res){
+      faceOpsBusy = false;
+      if (res.ok || res.code === 'BAD'){
+        var q2 = lsGet(FACEOPS_STORE, []);
+        if (q2.length && q2[0].id === it.id && q2[0].op === it.op) lsSet(FACEOPS_STORE, q2.slice(1));
+        if (res.ver) faceVerWanted = res.ver;
+        faceOpsFlush();
+      } else faceCloudText();
+    }).catch(function(){ faceOpsBusy = false; faceCloudText(); });
+  }
+  function faceLoadCloud(){
+    if (faceOpsBusy) return;
+    faceOpsBusy = true;
+    post({ action: 'faceLoad' }).then(function(res){
+      faceOpsBusy = false;
+      if (!res.ok || lsGet(FACEOPS_STORE, []).length) return;   // 有新的登錄還沒上傳，先不覆蓋
+      var F = faceDb(), had = Object.keys(F.faces).length;
+      F.faces = res.faces || {}; F.ver = res.ver || ''; F.cloud = 1; F.syncAt = Date.now();
+      lsSet(FACE_STORE, F);
+      renderFace(); faceCloudText();
+      if (!had && Object.keys(F.faces).length) faceReady().catch(function(){});
+    }).catch(function(){ faceOpsBusy = false; });
+  }
+  function faceCloudText(){
+    var el = document.getElementById('faceCloud'); if (!el) return;
+    var n = lsGet(FACEOPS_STORE, []).length, F = faceDb();
+    el.textContent = n ? '・ Cloud backup: ' + n + ' waiting to upload'
+      : F.ver ? '・ Cloud backup: synced' + (F.syncAt ? ' ' + hms(new Date(F.syncAt)).slice(0, 5) : '') : '';
+  }
+  faceCloudText();
+
   // 有人登錄過就在開頁 15 秒後先把模型載好，打卡時不用等
   if (Object.keys(faceDb().faces).length) setTimeout(function(){ faceReady().catch(function(){}); }, 15000);
 
@@ -1378,6 +1446,7 @@ body.nokey #setupMsg{display:block}
       if (!r.ok && r.code === 'KEY'){ document.body.classList.add('nokey'); return; }
       net(true);
       if (r.ok && r.cards) lsSet(SYNC_STORE, { cards: r.cards, last: r.last || {}, at: Date.now() });
+      if (r.ok) faceCloudSync(r.faceVer || '');
       flush();
     }).catch(function(){ net(false); });
   }
@@ -1396,7 +1465,7 @@ body.nokey #setupMsg{display:block}
   // 自動更新（Alan 10/16）：每 5 分鐘、以及 App 切回前景時，看 GitHub 上的版本號跟這頁一不一樣；
   // 不一樣就等沒人在打卡（沒在刷卡、沒在存、鏡頭關著、結果訊息已顯示超過 10 秒）再重新整理。
   // 斷網佇列存在平板裡，重新整理不會掉資料。每次上傳新版要把 APP_VER 改掉，平板才會換。
-  var APP_VER = '2026-10-17-2';
+  var APP_VER = '2026-10-17-3';
   var newVer = '';
   // ?setup 顯示目前版本，發現新版還沒換時也寫出來，一眼確認平板有沒有更新
   document.getElementById('appVer').textContent = APP_VER;
