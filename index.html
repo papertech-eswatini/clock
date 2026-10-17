@@ -360,7 +360,9 @@ body.nokey #setupMsg{display:block}
   var MODE_MS = 5000;              // 從鏡頭真正打開才開始算
   var SCAN_MS = 150;
   var SCAN_FAST_MS = 60;           // 內建條碼辨識一次只要幾十毫秒，間隔可以短
-  var CAM_KEEP_MS = 15000;         // Alan 10/16：打卡後鏡頭多開 15 秒，下一位按了馬上能掃（畫面不顯示，只是不關）
+  var FACE_MODE_MS = 12000;        // Alan 10/17：沒卡也能刷臉，只是久一點；鏡頭裡有臉、正在認時倒數延長到 12 秒
+  var FACE_ID_THR = 0.4, FACE_ID_GAP = 0.12;   // 刷臉打卡要很有把握：跟本人距離 ≤ 0.4，且比第二像的人小 0.12 以上（比只核對的 0.5 嚴）
+  var CAM_KEEP_MS = 15000;        // Alan 10/16：打卡後鏡頭多開 15 秒，下一位按了馬上能掃（畫面不顯示，只是不關）
   var NUDGE_MS = 2500;
   var SWITCH_MS = 5000;
   var NET_TIMEOUT_MS = 25000;      // Google 後端閒置後第一次可能要 10 秒以上
@@ -392,7 +394,8 @@ body.nokey #setupMsg{display:block}
   var camwrap = document.getElementById('camwrap');
   var resultEl = document.getElementById('result');
   var stream = null, loopId = 0, idleAt = 0, mode = null, modeAt = 0, busy = false;
-  var modeOT = false, clockOT = false;   // 加班上班／加班下班（10/17）：modeOT＝現在按的是加班鈕，clockOT＝正在存的這筆是加班打卡
+  var modeOT = false, clockOT = false;
+  var clockFace = null;   // 刷臉打卡（10/17）：正在存的這筆是靠臉認出來的 { d: 距離 }   // 加班上班／加班下班（10/17）：modeOT＝現在按的是加班鈕，clockOT＝正在存的這筆是加班打卡
   var lastText = '', lastTextAt = 0, resetTimer = null, lastShowAt = 0;
 
   function pad(n){ return (n < 10 ? '0' : '') + n; }
@@ -424,7 +427,7 @@ body.nokey #setupMsg{display:block}
     if (it.notBefore && it.notBefore > Date.now()){ setTimeout(flush, it.notBefore - Date.now() + 50); return; }
     flushing = true;
     var p = it.uploaded ? Promise.resolve({ ok: true }) :
-      post({ action: 'clock', card: it.card, type: it.type, rid: it.rid, ts: it.ts, offline: !it.live, live: !!it.live, edited: it.edited || '', device: DEVICE, ot: !!it.ot });
+      post({ action: 'clock', card: it.card, faceId: it.faceId || '', faceD: it.faceD, type: it.type, rid: it.rid, ts: it.ts, offline: !it.live, live: !!it.live, edited: it.edited || '', device: DEVICE, ot: !!it.ot });
     p.then(function(res){
       if (!res.ok && res.code !== 'DUP'){
         // 後端拒收（例如舊卡）：記到最近紀錄讓人資看到，不再重送
@@ -500,14 +503,17 @@ body.nokey #setupMsg{display:block}
     if (mode && !busy && !(stream && video.readyState >= 2)){ modeAt = Date.now(); touchIdle(); }
     if (enrolling){ modeAt = Date.now(); touchIdle(); }   // 登錄人臉不倒數，按 Cancel 才離開
     if (mode && !busy && !enrolling){
-      var waited = Date.now() - modeAt;
-      var leftS = Math.max(0, Math.ceil((MODE_MS - waited) / 1000));
-      if (waited > MODE_MS){
+      var waited = Date.now() - modeAt, lim = faceTrying ? FACE_MODE_MS : MODE_MS;
+      var leftS = Math.max(0, Math.ceil((lim - waited) / 1000));
+      if (waited > lim){
+        var tried = faceTrying;
         setMode(null, true);
         failSound();
-        show('bad', '✖ Not clocked: no card detected', '', 'Please tap Clock In or Clock Out and try again');
+        show('bad', tried ? '✖ Not clocked: card not read, face not recognised' : '✖ Not clocked: no card detected', '', 'Please tap Clock In or Clock Out and try again');
       } else if (Date.now() - lastShowAt < 3000){
         // 剛顯示過錯誤訊息，先讓員工看清楚
+      } else if (faceTrying){
+        showWaiting('', 'Recognising your face…', 'No card? Keep looking at the camera ・ ' + leftS + ' s left');
       } else if (waited > NUDGE_MS){
         showWaiting('warn', 'Card not read yet', 'Move the card closer, hold it still and avoid glare ・ ' + leftS + ' s left');
       } else {
@@ -711,9 +717,9 @@ body.nokey #setupMsg{display:block}
       if (enrolling){
         document.getElementById('modeText').textContent = '☺ ENROL FACE: scan the card';
         showWaiting('', 'Enrol a face', 'Scan the employee card, then look at the camera');
-      } else showWaiting('', 'Waiting for your card', 'NOT clocked yet ・ Hold your card in the yellow box');
+      } else { showWaiting('', 'Waiting for your card', 'NOT clocked yet ・ Hold your card in the yellow box'); faceIdStart(); }
     } else {
-      enrolling = false; modeOT = false;
+      enrolling = false; modeOT = false; faceIdGen++; faceTrying = false;
       camwrap.classList.remove('scan');
       if (!keepResult) idleMsg();
     }
@@ -750,6 +756,7 @@ body.nokey #setupMsg{display:block}
     // 人臉試用：有登錄的人另外留一張大一點的畫面，結果出來後再背景比對
     var rid = uid();   // 先定紀錄編號，人臉結果才對得到這一筆
     clockOT = modeOT;  // setMode(null) 會清掉 modeOT，先記下這筆是不是加班打卡
+    clockFace = null;
     var fimg = faceGrab(card.slice(0, 7));
     if (fimg) setTimeout(function(){ faceCheck(fimg, card.slice(0, 7), rid); }, 800);
     busy = true;
@@ -788,7 +795,8 @@ body.nokey #setupMsg{display:block}
   }
 
   // 平板當場判斷：存進佇列、馬上顯示結果，背景再上傳
-  function localClock(card, type, id, name, photo, rid){
+  // face：刷臉打卡時 { d }（沒有卡，card 是空字串，上傳時帶 faceId）
+  function localClock(card, type, id, name, photo, rid, face){
     var ts = Date.now(), last = lastFor(id);
     if (last && ts - last.ts < 60000){
       busy = false; beep(440, 150);
@@ -799,8 +807,12 @@ body.nokey #setupMsg{display:block}
     var flag = flagFor(type, last, ts), t = new Date(ts);
     rid = rid || uid();
     var item = { rid: rid, card: card, type: type, ts: ts, photo: photo, live: true, ot: clockOT, notBefore: flag ? ts + SWITCH_MS + 500 : 0 };
+    if (face){ item.faceId = id; item.faceD = face.d; }
     var q = queue(); q.push(item);
-    if (!setQueue(q)){ item.photo = ''; if (!setQueue(q)){ serverClock(card, type, photo, rid); return; } }
+    if (!setQueue(q)){ item.photo = ''; if (!setQueue(q)){
+      if (face){ busy = false; failSound(); show('bad', '✖ Not clocked: tablet storage full', '', 'Please use your card or tell HR.'); afterResult(); return; }
+      serverClock(card, type, photo, rid); return;
+    } }
     addRecent({ rid: rid, day: dayKey(t), time: hms(t), ts: ts, id: id, name: name, type: type, flag: flag, wait: true, ot: clockOT });
     render();
     busy = false;
@@ -878,7 +890,7 @@ body.nokey #setupMsg{display:block}
     var action = flag ? { label: label, ms: SWITCH_MS, fn: function(){ doSwitch(rid, false, queued); } } : null;
     // 加班打卡：標題寫 OT，下面註明要主管核准（10/17）
     var nm = (clockOT ? 'OT ' : '') + (type === 'IN' ? 'Clock In' : 'Clock Out');
-    var tm = time + (clockOT ? ' ・ Overtime needs supervisor approval' : '');
+    var tm = time + (clockFace ? ' ・ Recognised by face' : '') + (clockOT ? ' ・ Overtime needs supervisor approval' : '');
     if (flag){
       warnSound(); setTimeout(function(){ greet(type, String(who).split(' ・ ')[0]); }, 550);
       show('warn', nm + ' recorded ⚠', who, tm, FLAG_TEXT[flag], action);
@@ -906,7 +918,7 @@ body.nokey #setupMsg{display:block}
           return;
         }
         var r0 = recent().filter(function(x){ return x.rid === rid; })[0] || {};
-        var fl = flagFor(t, lastFor(it.card.slice(0, 7), rid), it.ts);
+        var fl = flagFor(t, lastFor(it.card ? it.card.slice(0, 7) : it.faceId, rid), it.ts);
         markRecent(rid, { type: t, flag: fl }); render();
         var big = 'Changed to ' + (t === 'IN' ? 'Clock In' : 'Clock Out');
         if (fl){ warnSound(); show('warn', big + ' ⚠', r0.name, 'Time ' + r0.time + ' ・ The change is recorded for HR', FLAG_TEXT[fl]); }
@@ -1156,6 +1168,53 @@ body.nokey #setupMsg{display:block}
     }).catch(function(){});
   }
 
+  // 刷臉打卡（Alan 10/17：沒掃卡、掃臉也能過，只是久一點）：按了上班／下班後，掃卡的同時在背景認臉；
+  // 只認登錄過的人，很有把握才算（FACE_ID_THR／FACE_ID_GAP），有卡先讀到就照刷卡。鏡頭裡有臉時倒數延長到 FACE_MODE_MS。
+  var faceIdGen = 0, faceTrying = false;
+  function faceIdStart(){
+    var gen = ++faceIdGen; faceTrying = false;
+    if (enrolling || !Object.keys(faceDb().faces).length) return;
+    faceReady().then(function(){ setTimeout(function(){ faceIdTry(gen); }, 600); }).catch(function(){});
+  }
+  function faceIdTry(gen){
+    if (gen !== faceIdGen || !mode || busy || enrolling) return;
+    if (!stream || !video.videoWidth){ setTimeout(function(){ faceIdTry(gen); }, 500); return; }
+    var c = document.createElement('canvas');
+    c.width = 480; c.height = Math.round(480 * video.videoHeight / video.videoWidth) || 360;
+    c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
+    var t1 = performance.now();
+    faceDetect(c).then(function(r){
+      if (gen !== faceIdGen || !mode || busy) return;
+      if (!r){ faceTrying = false; setTimeout(function(){ faceIdTry(gen); }, 300); return; }
+      faceTrying = true;
+      var F = faceDb(), best = null, second = null;
+      Object.keys(F.faces).forEach(function(k){
+        var d = faceMin(r.descriptor, F.faces[k].d), o = { id: k, n: F.faces[k].n, d: d };
+        if (!best || d < best.d){ second = best; best = o; } else if (!second || d < second.d) second = o;
+      });
+      if (best && best.d <= FACE_ID_THR && (!second || second.d - best.d >= FACE_ID_GAP)){
+        var L = faceLog();
+        L.push({ ts: Date.now(), id: best.id, n: best.n, ms: Math.round(performance.now() - t1), thr: FACE_ID_THR, res: 'FACEID',
+                 d: +best.d.toFixed(3), od: second ? +second.d.toFixed(3) : null, on: second ? second.n : '', img: faceThumb(c, r.detection.box) });
+        if (L.length > 200) L = L.slice(-200);
+        lsSet(FACELOG_STORE, L); renderFace();
+        faceClock(best, mode);
+        return;
+      }
+      setTimeout(function(){ faceIdTry(gen); }, 300);
+    }).catch(function(){ setTimeout(function(){ faceIdTry(gen); }, 1000); });
+  }
+  function faceClock(best, type){
+    if (busy || !mode) return;
+    touchIdle();
+    var photo = takePhoto(); flash();
+    var rid = uid();
+    clockOT = modeOT; clockFace = { d: best.d };
+    busy = true;
+    setMode(null, true);
+    localClock('', type, best.id, best.n, photo, rid, clockFace);
+  }
+
   // 登錄：掃員工卡 → 連拍約 3 秒，取 3 張以上清楚的臉
   function enrolCard(raw){
     var card = String(raw || '').trim().toUpperCase();
@@ -1204,7 +1263,7 @@ body.nokey #setupMsg{display:block}
     var n = L.length, ok = 0, bad = 0, none = 0, ms = 0, per = {};
     L.forEach(function(o){
       per[o.id] = per[o.id] || { n: 0, bad: 0 }; per[o.id].n++;
-      if (o.res === 'MATCH') ok++; else if (o.res === 'NOFACE') none++; else { bad++; per[o.id].bad++; }
+      if (o.res === 'MATCH' || o.res === 'FACEID') ok++; else if (o.res === 'NOFACE') none++; else { bad++; per[o.id].bad++; }
       ms += o.ms || 0;
     });
     document.getElementById('fN').textContent = n;
@@ -1226,7 +1285,7 @@ body.nokey #setupMsg{display:block}
     });
     if (!Object.keys(F.faces).length) fl.innerHTML = '<tr><td colspan="6" style="color:#8a94a3">Nobody enrolled yet</td></tr>';
     var lg = document.getElementById('faceLog'); lg.innerHTML = '';
-    var TAG = { MATCH: ['ok', 'Match'], NOMATCH: ['bad', 'Not match'], OTHER: ['bad', 'Looks like someone else'], NOFACE: ['none', 'No face found'] };
+    var TAG = { FACEID: ['ok', 'Face clock-in (no card)'], MATCH: ['ok', 'Match'], NOMATCH: ['bad', 'Not match'], OTHER: ['bad', 'Looks like someone else'], NOFACE: ['none', 'No face found'] };
     L.slice().reverse().slice(0, 60).forEach(function(o){
       var tr = document.createElement('tr'), d = new Date(o.ts);
       var im = document.createElement('td'), img = document.createElement('img'); img.src = o.img || ''; img.alt = ''; im.appendChild(img); tr.appendChild(im);
@@ -1337,7 +1396,7 @@ body.nokey #setupMsg{display:block}
   // 自動更新（Alan 10/16）：每 5 分鐘、以及 App 切回前景時，看 GitHub 上的版本號跟這頁一不一樣；
   // 不一樣就等沒人在打卡（沒在刷卡、沒在存、鏡頭關著、結果訊息已顯示超過 10 秒）再重新整理。
   // 斷網佇列存在平板裡，重新整理不會掉資料。每次上傳新版要把 APP_VER 改掉，平板才會換。
-  var APP_VER = '2026-10-17-1';
+  var APP_VER = '2026-10-17-2';
   var newVer = '';
   // ?setup 顯示目前版本，發現新版還沒換時也寫出來，一眼確認平板有沒有更新
   document.getElementById('appVer').textContent = APP_VER;
