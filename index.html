@@ -436,7 +436,7 @@ body.nokey #setupMsg{display:block}
     if (it.notBefore && it.notBefore > Date.now()){ setTimeout(flush, it.notBefore - Date.now() + 50); return; }
     flushing = true;
     var p = it.uploaded ? Promise.resolve({ ok: true }) :
-      post({ action: 'clock', card: it.card, faceId: it.faceId || '', faceD: it.faceD, type: it.type, rid: it.rid, ts: it.ts, offline: !it.live, live: !!it.live, edited: it.edited || '', device: DEVICE, ot: !!it.ot });
+      post({ action: 'clock', card: it.card, faceId: it.faceId || '', faceD: it.faceD, faceS: it.faceS, faceN: it.faceN, faceNF: it.faceNF, type: it.type, rid: it.rid, ts: it.ts, offline: !it.live, live: !!it.live, edited: it.edited || '', device: DEVICE, ot: !!it.ot });
     p.then(function(res){
       if (!res.ok && res.code !== 'DUP'){
         // 後端拒收（例如舊卡）：記到最近紀錄讓人資看到，不再重送
@@ -816,7 +816,7 @@ body.nokey #setupMsg{display:block}
     var flag = flagFor(type, last, ts), t = new Date(ts);
     rid = rid || uid();
     var item = { rid: rid, card: card, type: type, ts: ts, photo: photo, live: true, ot: clockOT, notBefore: flag ? ts + SWITCH_MS + 500 : 0 };
-    if (face){ item.faceId = id; item.faceD = face.d; }
+    if (face){ item.faceId = id; item.faceD = face.d; item.faceS = face.s; item.faceN = face.n; item.faceNF = face.nf; }
     var q = queue(); q.push(item);
     if (!setQueue(q)){ item.photo = ''; if (!setQueue(q)){
       if (face){ busy = false; failSound(); show('bad', '✖ Not clocked: tablet storage full', '', 'Please use your card or tell HR.'); afterResult(); return; }
@@ -1107,14 +1107,22 @@ body.nokey #setupMsg{display:block}
   // face-api 回傳的不是完整的 Promise（沒有 .catch），包一層
   function faceDetect(src, loose, noMin){
     var o = loose ? { inputSize: 416, scoreThreshold: 0.3 } : { inputSize: faceDist0().size, scoreThreshold: 0.5 };
-    var det = null;
+    var det = null, srcD = src;
     return Promise.resolve(faceapi.detectAllFaces(src, new faceapi.TinyFaceDetectorOptions(o))).then(function(a){
       det = facePick(a, src, noMin);
+      if (det || loose) return a;
+      // 10/20 Alan：膚色深的同事刷臉特別慢（比對距離其實比較好，是光線暗時找不到臉）。
+      // 找不到就用調亮、加對比的複本再找一次，特徵也從調亮的複本算（模擬暗臉測試：找到的比例 2/8 → 6/8，距離也小 0.01 到 0.02）
+      var e = document.createElement('canvas'); e.width = src.width; e.height = src.height;
+      var g = e.getContext('2d'); g.filter = 'brightness(1.6) contrast(1.2)'; g.drawImage(src, 0, 0);
+      return Promise.resolve(faceapi.detectAllFaces(e, new faceapi.TinyFaceDetectorOptions({ inputSize: o.inputSize, scoreThreshold: 0.4 })))
+        .then(function(b){ det = facePick(b, src, noMin); if (det) srcD = e; return b; });
+    }).then(function(){
       if (!det) return null;
-      return Promise.resolve(faceapi.extractFaces(src, [det])).then(function(f){
+      return Promise.resolve(faceapi.extractFaces(srcD, [det])).then(function(f){
         return faceapi.detectFaceLandmarksTiny(f[0]);
       }).then(function(lm){
-        return faceapi.extractFaces(src, [lm.shiftBy(det.box.x, det.box.y).align(null, { useDlibAlignment: true })]);
+        return faceapi.extractFaces(srcD, [lm.shiftBy(det.box.x, det.box.y).align(null, { useDlibAlignment: true })]);
       }).then(function(f){
         return faceapi.computeFaceDescriptor(f[0]);
       }).then(function(desc){ return { detection: det, descriptor: desc }; });
@@ -1211,9 +1219,9 @@ body.nokey #setupMsg{display:block}
 
   // 刷臉打卡（Alan 10/17：沒掃卡、掃臉也能過，只是久一點）：按了上班／下班後，掃卡的同時在背景認臉；
   // 只認登錄過的人，很有把握才算（FACE_ID_THR／FACE_ID_GAP），有卡先讀到就照刷卡。鏡頭裡有臉時倒數延長到 FACE_MODE_MS。
-  var faceIdGen = 0, faceTrying = false, faceIdT0 = 0;
+  var faceIdGen = 0, faceTrying = false, faceIdT0 = 0, faceIdN = 0, faceIdNF = 0;   // 認了幾次、幾次找不到臉（寫進 Face 欄查速度）
   function faceIdStart(){
-    var gen = ++faceIdGen; faceTrying = false; faceIdT0 = performance.now();
+    var gen = ++faceIdGen; faceTrying = false; faceIdT0 = performance.now(); faceIdN = 0; faceIdNF = 0;
     if (enrolling || !Object.keys(faceDb().faces).length) return;
     faceReady().then(function(){ faceIdTry(gen); }).catch(function(){});
   }
@@ -1225,7 +1233,8 @@ body.nokey #setupMsg{display:block}
     var t1 = performance.now();
     faceDetect(c).then(function(r){
       if (gen !== faceIdGen || !mode || busy) return;
-      if (!r){ faceTrying = false; setTimeout(function(){ faceIdTry(gen); }, 50); return; }
+      faceIdN++;
+      if (!r){ faceIdNF++; faceTrying = false; setTimeout(function(){ faceIdTry(gen); }, 50); return; }
       faceTrying = true;
       var F = faceDb(), best = null, second = null;
       Object.keys(F.faces).forEach(function(k){
@@ -1249,7 +1258,7 @@ body.nokey #setupMsg{display:block}
     touchIdle();
     var photo = takePhoto(); flash();
     var rid = uid();
-    clockOT = modeOT; clockFace = { d: best.d };
+    clockOT = modeOT; clockFace = { d: best.d, s: +((performance.now() - faceIdT0) / 1000).toFixed(1), n: faceIdN, nf: faceIdNF };
     busy = true;
     setMode(null, true);
     localClock('', type, best.id, best.n, photo, rid, clockFace);
@@ -1374,7 +1383,7 @@ body.nokey #setupMsg{display:block}
     var c = faceFrame(), D = faceDist0(), t0 = performance.now(), a = [], t1 = 0;
     Promise.resolve(faceapi.detectAllFaces(c, new faceapi.TinyFaceDetectorOptions({ inputSize: D.size, scoreThreshold: 0.5 }))).then(function(r){
       a = r || []; t1 = performance.now();
-      return facePick(a, c) ? faceDetect(c) : null;
+      return faceDetect(c);   // 找不到時 faceDetect 會用調亮的複本再找
     }).then(function(r){
       if (!faceTestOn) return;
       var t2 = performance.now(), pick = r && r.detection;
@@ -1382,6 +1391,7 @@ body.nokey #setupMsg{display:block}
       var W = faceOv.clientWidth, H = faceOv.clientHeight, s = Math.max(W / c.width, H / c.height), ox = (W - c.width * s) / 2, oy = (H - c.height * s) / 2;
       faceOv.width = W; faceOv.height = H;
       var g = faceOv.getContext('2d'); g.clearRect(0, 0, W, H); g.lineWidth = 4; g.font = 'bold 18px sans-serif';
+      if (pick && !a.some(function(d){ return Math.abs(d.box.x - pick.box.x) < 1 && Math.abs(d.box.y - pick.box.y) < 1; })) a.push(pick);   // 調亮後才找到的臉
       a.forEach(function(d){
         var b = d.box, on = pick && Math.abs(b.x - pick.box.x) < 1 && Math.abs(b.y - pick.box.y) < 1;
         var x = W - (ox + (b.x + b.width) * s), y = oy + b.y * s, pct = Math.round(b.height / c.height * 100);
@@ -1559,7 +1569,7 @@ body.nokey #setupMsg{display:block}
   // 自動更新（Alan 10/16）：每 5 分鐘、以及 App 切回前景時，看 GitHub 上的版本號跟這頁一不一樣；
   // 不一樣就等沒人在打卡（沒在刷卡、沒在存、鏡頭關著、結果訊息已顯示超過 10 秒）再重新整理。
   // 斷網佇列存在平板裡，重新整理不會掉資料。每次上傳新版要把 APP_VER 改掉，平板才會換。
-  var APP_VER = '2026-10-20-2';
+  var APP_VER = '2026-10-20-3';
   var newVer = '';
   // ?setup 顯示目前版本，發現新版還沒換時也寫出來，一眼確認平板有沒有更新
   document.getElementById('appVer').textContent = APP_VER;
