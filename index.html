@@ -60,6 +60,8 @@ video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:
   border:3px dashed rgba(255,255,255,.6);border-radius:50%;pointer-events:none}
 .frame{position:absolute;left:50%;transform:translateX(-50%);top:60%;width:min(44%,36vh);aspect-ratio:1/1;max-height:32%;
   border:3px dashed rgba(255,214,0,.9);border-radius:16px;pointer-events:none}
+#faceOv{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;display:none}
+.camwrap.ftest #chooser{display:none}
 .frame span{position:absolute;top:-26px;left:0;right:0;text-align:center;color:#ffd600;font-size:15px;text-shadow:0 1px 3px #000}
 .hint{position:absolute;left:0;right:0;bottom:12px;text-align:center;color:#fff;font-size:clamp(13px,2.2vw,18px);text-shadow:0 1px 3px #000}
 #modeBar{position:absolute;left:0;right:0;top:0;padding:14px 16px;font-size:clamp(18px,3.4vw,28px);font-weight:700;
@@ -271,6 +273,7 @@ body.nokey #setupMsg{display:block}
       </div>
     </div>
     <div id="flash"></div>
+    <canvas id="faceOv"></canvas>
   </div>
   <div id="result">
     <div class="big">Tap Clock In or Clock Out</div>
@@ -304,6 +307,11 @@ body.nokey #setupMsg{display:block}
     <span id="faceModel">Model not loaded</span>
     <span id="faceCloud"></span>
   </div>
+  <div class="row">
+    Face distance <select id="faceDistSel"></select>
+    <button id="faceTest">▶ Live test</button>
+    <span id="faceTestInfo"></span>
+  </div>
   <div class="stats" style="margin-top:12px">
     <div class="stat"><b id="fN">0</b><small>Checks</small></div>
     <div class="stat"><b id="fOk">0</b><small>Match</small></div>
@@ -324,7 +332,7 @@ body.nokey #setupMsg{display:block}
     </table>
   </div>
   <div class="row"><button id="faceCsv">Download results (CSV)</button><button id="faceClear">Clear results</button></div>
-  <div class="note">Trial only: staff never see the result and clocking is never blocked. Only enrolled people are checked. Enrol: tap the button, scan the person's card, then the person looks at the camera for about 3 seconds. Faces stay on this tablet; each result is also written to the Face column of Clock Log (filter "Not match" and check the photo). Distance: smaller = more alike. "Closest other" is the most similar other enrolled person; if it is often below the match line, lower the line.</div>
+  <div class="note">Trial only: staff never see the result and clocking is never blocked. Only enrolled people are checked. Enrol: tap the button, scan the person's card, then the person looks at the camera for about 3 seconds. Faces stay on this tablet; each result is also written to the Face column of Clock Log (filter "Not match" and check the photo). Distance: smaller = more alike. "Closest other" is the most similar other enrolled person; if it is often below the match line, lower the line. Face distance: the camera looks at the whole picture and uses the biggest (nearest) face; faces smaller than the chosen distance are ignored, so people queuing behind are not checked. Use Live test to see it: green box = the face that would be checked, grey = ignored.</div>
 </section>
 <section class="panel admin-only">
   <h2>Recent on this tablet <span id="todayLabel"></span></h2>
@@ -965,24 +973,11 @@ body.nokey #setupMsg{display:block}
     if (sx2 - sx1 < 60 || sy2 - sy1 < 60) return null;
     return { x: sx1, y: sy1, w: sx2 - sx1, h: sy2 - sy1 };
   }
-  // 認臉範圍（Alan 10/20：排隊時鏡頭會照到後面的人）：只看白色臉框加黃框那一欄，左右各多留 40% 框寬；算不出來就看整張
-  function faceRect(){
-    var fe = document.querySelector('.frame'), oe = document.querySelector('.face'), vw = video.videoWidth, vh = video.videoHeight;
-    if (!fe || !vw || !vh) return null;
-    var fr = fe.getBoundingClientRect(), vr = video.getBoundingClientRect(), or = oe ? oe.getBoundingClientRect() : fr;
-    if (!fr.width || !vr.width) return null;
-    if (!or.width) or = fr;
-    var s = Math.max(vr.width / vw, vr.height / vh), ox = (vr.width - vw * s) / 2, oy = (vr.height - vh * s) / 2, pad = fr.width * 0.4;
-    var x1 = Math.min(fr.left, or.left) - vr.left - pad, x2 = Math.max(fr.right, or.right) - vr.left + pad, y2 = fr.bottom - vr.top + pad / 2;
-    var sx1 = Math.max(0, vw - (x2 - ox) / s), sx2 = Math.min(vw, vw - (x1 - ox) / s), sy2 = Math.min(vh, (y2 - oy) / s);
-    if (sx2 - sx1 < 120 || sy2 < 120) return null;
-    return { x: sx1, y: 0, w: sx2 - sx1, h: sy2 };
-  }
+  // 認臉看整個畫面（Alan 10/20：鏡頭高度不一定，不限黃框；排隊時取最大最近的那張臉，見 faceDetect）
   function faceFrame(){
-    var r = faceRect() || { x: 0, y: 0, w: video.videoWidth, h: video.videoHeight };
-    var k = Math.min(1, 480 / Math.max(r.w, r.h)), c = document.createElement('canvas');
-    c.width = Math.round(r.w * k); c.height = Math.round(r.h * k);
-    c.getContext('2d').drawImage(video, r.x, r.y, r.w, r.h, 0, 0, c.width, c.height);
+    var vw = video.videoWidth, vh = video.videoHeight, k = Math.min(1, 480 / vw), c = document.createElement('canvas');
+    c.width = Math.round(vw * k); c.height = Math.round(vh * k);
+    c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
     return c;
   }
   function jsqrScan(){
@@ -1084,23 +1079,46 @@ body.nokey #setupMsg{display:block}
       ]);
     }).then(function(){
       // 先空跑一次，第一次真的比對才不會特別慢
-      var c = document.createElement('canvas'); c.width = 160; c.height = 120;
-      return faceDetect(c).catch(function(){});
+      var c = document.createElement('canvas'); c.width = 160; c.height = 160;
+      return Promise.resolve(faceDetect(c)).then(function(){ return faceapi.detectFaceLandmarksTiny(c); })
+        .then(function(){ return faceapi.computeFaceDescriptor(c); }).catch(function(){});
     }).then(function(){
       faceModel('Model ready (' + ((Date.now() - t0) / 1000).toFixed(1) + ' s)');
     }).catch(function(e){ faceP = null; faceModel('Model failed: ' + (e && e.message || e)); throw e; });
     return faceP;
   }
-  function faceDetect(src, loose){
-    // face-api 回傳的不是完整的 Promise（沒有 .catch），包一層
-    var o = loose ? { inputSize: 416, scoreThreshold: 0.3 } : { inputSize: 320, scoreThreshold: 0.5 };
-    // 範圍裡有好幾張臉時取最大那張：排隊時後面的人臉比較小，最大的是站在平板前打卡的人
-    return Promise.resolve(faceapi.detectAllFaces(src, new faceapi.TinyFaceDetectorOptions(o))
-      .withFaceLandmarks(true).withFaceDescriptors()).then(function(a){
-        var best = null, area = function(r){ return r.detection.box.width * r.detection.box.height; };
-        (a || []).forEach(function(r){ if (!best || area(r) > area(best)) best = r; });
-        return best;
-      });
+  // 掃臉距離（Alan 10/20，依平板裝的位置在 ?setup 選）：臉比 min（佔畫面高度）小就當太遠不理；越遠要越大的 size，越慢
+  var FACE_DIST = {
+    N: { min: 0.18, size: 224, t: 'Near (about 1 m) · fastest' },
+    M: { min: 0.11, size: 320, t: 'Normal (about 1.5 m)' },
+    F: { min: 0.06, size: 416, t: 'Far (2 m or more) · slower' }
+  };
+  function faceDist0(){ return FACE_DIST[lsGet('pte_clock_facedist_v1', 'M')] || FACE_DIST.M; }
+  function facePick(a, src, noMin){
+    var D = faceDist0(), best = null;
+    (a || []).forEach(function(d){
+      if (!noMin && d.box.height < src.height * D.min) return;
+      if (!best || d.box.area > best.box.area) best = d;
+    });
+    return best;
+  }
+  // 先只找臉，挑出最大最近、夠近的那張（排隊時後面的人臉比較小），只算這一張的特徵，其他臉不花時間。
+  // 對齊方式跟 face-api 串接寫法一樣（useDlibAlignment），算出來的特徵完全相同，舊的登錄資料照用。
+  // face-api 回傳的不是完整的 Promise（沒有 .catch），包一層
+  function faceDetect(src, loose, noMin){
+    var o = loose ? { inputSize: 416, scoreThreshold: 0.3 } : { inputSize: faceDist0().size, scoreThreshold: 0.5 };
+    var det = null;
+    return Promise.resolve(faceapi.detectAllFaces(src, new faceapi.TinyFaceDetectorOptions(o))).then(function(a){
+      det = facePick(a, src, noMin);
+      if (!det) return null;
+      return Promise.resolve(faceapi.extractFaces(src, [det])).then(function(f){
+        return faceapi.detectFaceLandmarksTiny(f[0]);
+      }).then(function(lm){
+        return faceapi.extractFaces(src, [lm.shiftBy(det.box.x, det.box.y).align(null, { useDlibAlignment: true })]);
+      }).then(function(f){
+        return faceapi.computeFaceDescriptor(f[0]);
+      }).then(function(desc){ return { detection: det, descriptor: desc }; });
+    });
   }
   // 打卡比對：先用快的找臉，找不到再放寬找一次（範例照片測試 12 張找不到的降到 1 張）
   function faceDetectTwice(src){
@@ -1193,20 +1211,21 @@ body.nokey #setupMsg{display:block}
 
   // 刷臉打卡（Alan 10/17：沒掃卡、掃臉也能過，只是久一點）：按了上班／下班後，掃卡的同時在背景認臉；
   // 只認登錄過的人，很有把握才算（FACE_ID_THR／FACE_ID_GAP），有卡先讀到就照刷卡。鏡頭裡有臉時倒數延長到 FACE_MODE_MS。
-  var faceIdGen = 0, faceTrying = false;
+  var faceIdGen = 0, faceTrying = false, faceIdT0 = 0;
   function faceIdStart(){
-    var gen = ++faceIdGen; faceTrying = false;
+    var gen = ++faceIdGen; faceTrying = false; faceIdT0 = performance.now();
     if (enrolling || !Object.keys(faceDb().faces).length) return;
-    faceReady().then(function(){ setTimeout(function(){ faceIdTry(gen); }, 600); }).catch(function(){});
+    faceReady().then(function(){ faceIdTry(gen); }).catch(function(){});
   }
+  // 10/20 加速：鏡頭一出畫面就開始認（原本先等 0.6 秒），每次認完隔 0.05 秒就再認（原本 0.3 秒）
   function faceIdTry(gen){
     if (gen !== faceIdGen || !mode || busy || enrolling) return;
-    if (!stream || !video.videoWidth){ setTimeout(function(){ faceIdTry(gen); }, 500); return; }
+    if (!stream || !video.videoWidth || video.readyState < 2){ setTimeout(function(){ faceIdTry(gen); }, 100); return; }
     var c = faceFrame();
     var t1 = performance.now();
     faceDetect(c).then(function(r){
       if (gen !== faceIdGen || !mode || busy) return;
-      if (!r){ faceTrying = false; setTimeout(function(){ faceIdTry(gen); }, 300); return; }
+      if (!r){ faceTrying = false; setTimeout(function(){ faceIdTry(gen); }, 50); return; }
       faceTrying = true;
       var F = faceDb(), best = null, second = null;
       Object.keys(F.faces).forEach(function(k){
@@ -1215,14 +1234,14 @@ body.nokey #setupMsg{display:block}
       });
       if (best && best.d <= FACE_ID_THR && (!second || second.d - best.d >= FACE_ID_GAP)){
         var L = faceLog();
-        L.push({ ts: Date.now(), id: best.id, n: best.n, ms: Math.round(performance.now() - t1), thr: FACE_ID_THR, res: 'FACEID',
+        L.push({ ts: Date.now(), id: best.id, n: best.n, ms: Math.round(performance.now() - faceIdT0), thr: FACE_ID_THR, res: 'FACEID',   // 從按鈕到認出來的總時間
                  d: +best.d.toFixed(3), od: second ? +second.d.toFixed(3) : null, on: second ? second.n : '', img: faceThumb(c, r.detection.box) });
         if (L.length > 200) L = L.slice(-200);
         lsSet(FACELOG_STORE, L); renderFace();
         faceClock(best, mode);
         return;
       }
-      setTimeout(function(){ faceIdTry(gen); }, 300);
+      setTimeout(function(){ faceIdTry(gen); }, 50);
     }).catch(function(){ setTimeout(function(){ faceIdTry(gen); }, 1000); });
   }
   function faceClock(best, type){
@@ -1250,7 +1269,7 @@ body.nokey #setupMsg{display:block}
         (function one(){
           if (!stream || tries >= 10 || got.length >= 5) return done(got);
           tries++;
-          faceDetect(faceFrame()).then(function(r){
+          faceDetect(faceFrame(), false, true).then(function(r){
             if (r && r.detection.score > 0.6) got.push(Array.prototype.map.call(r.descriptor, function(v){ return +v.toFixed(4); }));
             showWaiting('', 'Enrolling ' + name, 'Keep still… ' + got.length + ' / 5');
             setTimeout(one, 300);
@@ -1330,6 +1349,61 @@ body.nokey #setupMsg{display:block}
     var v = Number(this.value); if (!(v >= 0.3 && v <= 0.7)) { renderFace(); return; }
     var F = faceDb(); F.thr = v; lsSet(FACE_STORE, F); renderFace();
   };
+  // 掃臉距離與即時測試（Alan 10/20：依鏡頭裝的高度調）：畫面上框出找到的臉，綠框＝會拿來認的那張（最大、夠近），灰框＝太遠不理
+  var faceDistSel = document.getElementById('faceDistSel'), faceTestOn = false, faceOv = document.getElementById('faceOv');
+  Object.keys(FACE_DIST).forEach(function(k){ var o = document.createElement('option'); o.value = k; o.textContent = FACE_DIST[k].t; faceDistSel.appendChild(o); });
+  faceDistSel.value = lsGet('pte_clock_facedist_v1', 'M');
+  faceDistSel.onchange = function(){ lsSet('pte_clock_facedist_v1', this.value); };
+  function faceTestStop(){
+    faceTestOn = false; faceOv.style.display = 'none'; camwrap.classList.remove('ftest');
+    document.getElementById('faceTest').textContent = '▶ Live test';
+  }
+  document.getElementById('faceTest').onclick = function(){
+    if (faceTestOn){ faceTestStop(); document.getElementById('faceTestInfo').textContent = ''; return; }
+    if (busy || mode) return;
+    faceTestOn = true; this.textContent = '■ Stop test'; faceOv.style.display = 'block'; camwrap.classList.add('ftest');
+    document.getElementById('faceTestInfo').textContent = 'Starting…';
+    if (!stream) startCam().catch(faceTestStop);
+    faceReady().then(faceTestLoop).catch(faceTestStop);
+  };
+  function faceTestLoop(){
+    if (!faceTestOn) return;
+    if (mode || busy){ faceTestStop(); return; }
+    if (!stream || video.readyState < 2){ setTimeout(faceTestLoop, 200); return; }
+    touchIdle();
+    var c = faceFrame(), D = faceDist0(), t0 = performance.now(), a = [], t1 = 0;
+    Promise.resolve(faceapi.detectAllFaces(c, new faceapi.TinyFaceDetectorOptions({ inputSize: D.size, scoreThreshold: 0.5 }))).then(function(r){
+      a = r || []; t1 = performance.now();
+      return facePick(a, c) ? faceDetect(c) : null;
+    }).then(function(r){
+      if (!faceTestOn) return;
+      var t2 = performance.now(), pick = r && r.detection;
+      // 影片是 cover 填滿、左右鏡像，框要照同樣方式畫
+      var W = faceOv.clientWidth, H = faceOv.clientHeight, s = Math.max(W / c.width, H / c.height), ox = (W - c.width * s) / 2, oy = (H - c.height * s) / 2;
+      faceOv.width = W; faceOv.height = H;
+      var g = faceOv.getContext('2d'); g.clearRect(0, 0, W, H); g.lineWidth = 4; g.font = 'bold 18px sans-serif';
+      a.forEach(function(d){
+        var b = d.box, on = pick && Math.abs(b.x - pick.box.x) < 1 && Math.abs(b.y - pick.box.y) < 1;
+        var x = W - (ox + (b.x + b.width) * s), y = oy + b.y * s, pct = Math.round(b.height / c.height * 100);
+        g.strokeStyle = g.fillStyle = on ? '#00e676' : '#9e9e9e';
+        g.strokeRect(x, y, b.width * s, b.height * s);
+        g.fillText(pct + '%' + (on ? '' : (b.height < c.height * D.min ? ' too far' : '')), x + 4, y - 6);
+      });
+      var txt = a.length ? (pick ? '' : 'Face too far (needs ' + Math.round(D.min * 100) + '% of the picture) ・ ') : 'No face ・ ';
+      if (r){
+        var F = faceDb(), best = null, second = null;
+        Object.keys(F.faces).forEach(function(k){
+          var d = faceMin(r.descriptor, F.faces[k].d), o = { n: F.faces[k].n, d: d };
+          if (!best || d < best.d){ second = best; best = o; } else if (!second || d < second.d) second = o;
+        });
+        if (best) txt += best.n + ' (' + best.d.toFixed(2) + ') ' +
+          (best.d <= FACE_ID_THR && (!second || second.d - best.d >= FACE_ID_GAP) ? '✔ would clock in' : '✖ not sure') + ' ・ ';
+      }
+      txt += 'find ' + ((t1 - t0) / 1000).toFixed(2) + ' s' + (r ? ', check ' + ((t2 - t0) / 1000).toFixed(2) + ' s' : '');
+      document.getElementById('faceTestInfo').textContent = txt;
+      setTimeout(faceTestLoop, 100);
+    }).catch(function(){ setTimeout(faceTestLoop, 500); });
+  }
   document.getElementById('faceClear').onclick = function(){
     if (this.textContent !== 'Tap again to clear'){ this.textContent = 'Tap again to clear'; return; }
     this.textContent = 'Clear results'; lsSet(FACELOG_STORE, []); renderFace();
@@ -1485,7 +1559,7 @@ body.nokey #setupMsg{display:block}
   // 自動更新（Alan 10/16）：每 5 分鐘、以及 App 切回前景時，看 GitHub 上的版本號跟這頁一不一樣；
   // 不一樣就等沒人在打卡（沒在刷卡、沒在存、鏡頭關著、結果訊息已顯示超過 10 秒）再重新整理。
   // 斷網佇列存在平板裡，重新整理不會掉資料。每次上傳新版要把 APP_VER 改掉，平板才會換。
-  var APP_VER = '2026-10-20-1';
+  var APP_VER = '2026-10-20-2';
   var newVer = '';
   // ?setup 顯示目前版本，發現新版還沒換時也寫出來，一眼確認平板有沒有更新
   document.getElementById('appVer').textContent = APP_VER;
