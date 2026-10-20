@@ -965,6 +965,26 @@ body.nokey #setupMsg{display:block}
     if (sx2 - sx1 < 60 || sy2 - sy1 < 60) return null;
     return { x: sx1, y: sy1, w: sx2 - sx1, h: sy2 - sy1 };
   }
+  // 認臉範圍（Alan 10/20：排隊時鏡頭會照到後面的人）：只看白色臉框加黃框那一欄，左右各多留 40% 框寬；算不出來就看整張
+  function faceRect(){
+    var fe = document.querySelector('.frame'), oe = document.querySelector('.face'), vw = video.videoWidth, vh = video.videoHeight;
+    if (!fe || !vw || !vh) return null;
+    var fr = fe.getBoundingClientRect(), vr = video.getBoundingClientRect(), or = oe ? oe.getBoundingClientRect() : fr;
+    if (!fr.width || !vr.width) return null;
+    if (!or.width) or = fr;
+    var s = Math.max(vr.width / vw, vr.height / vh), ox = (vr.width - vw * s) / 2, oy = (vr.height - vh * s) / 2, pad = fr.width * 0.4;
+    var x1 = Math.min(fr.left, or.left) - vr.left - pad, x2 = Math.max(fr.right, or.right) - vr.left + pad, y2 = fr.bottom - vr.top + pad / 2;
+    var sx1 = Math.max(0, vw - (x2 - ox) / s), sx2 = Math.min(vw, vw - (x1 - ox) / s), sy2 = Math.min(vh, (y2 - oy) / s);
+    if (sx2 - sx1 < 120 || sy2 < 120) return null;
+    return { x: sx1, y: 0, w: sx2 - sx1, h: sy2 };
+  }
+  function faceFrame(){
+    var r = faceRect() || { x: 0, y: 0, w: video.videoWidth, h: video.videoHeight };
+    var k = Math.min(1, 480 / Math.max(r.w, r.h)), c = document.createElement('canvas');
+    c.width = Math.round(r.w * k); c.height = Math.round(r.h * k);
+    c.getContext('2d').drawImage(video, r.x, r.y, r.w, r.h, 0, 0, c.width, c.height);
+    return c;
+  }
   function jsqrScan(){
     var r = scanRect() || { x: 0, y: 0, w: video.videoWidth, h: video.videoHeight };
     var k = Math.min(1, 640 / r.w), w = Math.round(r.w * k), h = Math.round(r.h * k);
@@ -1074,8 +1094,13 @@ body.nokey #setupMsg{display:block}
   function faceDetect(src, loose){
     // face-api 回傳的不是完整的 Promise（沒有 .catch），包一層
     var o = loose ? { inputSize: 416, scoreThreshold: 0.3 } : { inputSize: 320, scoreThreshold: 0.5 };
-    return Promise.resolve(faceapi.detectSingleFace(src, new faceapi.TinyFaceDetectorOptions(o))
-      .withFaceLandmarks(true).withFaceDescriptor());
+    // 範圍裡有好幾張臉時取最大那張：排隊時後面的人臉比較小，最大的是站在平板前打卡的人
+    return Promise.resolve(faceapi.detectAllFaces(src, new faceapi.TinyFaceDetectorOptions(o))
+      .withFaceLandmarks(true).withFaceDescriptors()).then(function(a){
+        var best = null, area = function(r){ return r.detection.box.width * r.detection.box.height; };
+        (a || []).forEach(function(r){ if (!best || area(r) > area(best)) best = r; });
+        return best;
+      });
   }
   // 打卡比對：先用快的找臉，找不到再放寬找一次（範例照片測試 12 張找不到的降到 1 張）
   function faceDetectTwice(src){
@@ -1099,10 +1124,7 @@ body.nokey #setupMsg{display:block}
   // 打卡讀到卡的那一刻：只有登錄過的人才留畫面
   function faceGrab(id){
     if (!faceDb().faces[id] || !stream || !video.videoWidth) return null;
-    var c = document.createElement('canvas');
-    c.width = 480; c.height = Math.round(480 * video.videoHeight / video.videoWidth) || 360;
-    c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
-    return c;
+    return faceFrame();
   }
   // 比對結果寫進 Clock Log「Face」欄（10/16 Alan：試用就先上線，HR 篩 Not match 查照片）
   var FACEQ_STORE = 'pte_clock_faceq_v1', faceFlushing = false;
@@ -1180,9 +1202,7 @@ body.nokey #setupMsg{display:block}
   function faceIdTry(gen){
     if (gen !== faceIdGen || !mode || busy || enrolling) return;
     if (!stream || !video.videoWidth){ setTimeout(function(){ faceIdTry(gen); }, 500); return; }
-    var c = document.createElement('canvas');
-    c.width = 480; c.height = Math.round(480 * video.videoHeight / video.videoWidth) || 360;
-    c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
+    var c = faceFrame();
     var t1 = performance.now();
     faceDetect(c).then(function(r){
       if (gen !== faceIdGen || !mode || busy) return;
@@ -1230,7 +1250,7 @@ body.nokey #setupMsg{display:block}
         (function one(){
           if (!stream || tries >= 10 || got.length >= 5) return done(got);
           tries++;
-          faceDetect(video).then(function(r){
+          faceDetect(faceFrame()).then(function(r){
             if (r && r.detection.score > 0.6) got.push(Array.prototype.map.call(r.descriptor, function(v){ return +v.toFixed(4); }));
             showWaiting('', 'Enrolling ' + name, 'Keep still… ' + got.length + ' / 5');
             setTimeout(one, 300);
@@ -1465,7 +1485,7 @@ body.nokey #setupMsg{display:block}
   // 自動更新（Alan 10/16）：每 5 分鐘、以及 App 切回前景時，看 GitHub 上的版本號跟這頁一不一樣；
   // 不一樣就等沒人在打卡（沒在刷卡、沒在存、鏡頭關著、結果訊息已顯示超過 10 秒）再重新整理。
   // 斷網佇列存在平板裡，重新整理不會掉資料。每次上傳新版要把 APP_VER 改掉，平板才會換。
-  var APP_VER = '2026-10-17-3';
+  var APP_VER = '2026-10-20-1';
   var newVer = '';
   // ?setup 顯示目前版本，發現新版還沒換時也寫出來，一眼確認平板有沒有更新
   document.getElementById('appVer').textContent = APP_VER;
