@@ -436,7 +436,7 @@ body.nokey #setupMsg{display:block}
     if (it.notBefore && it.notBefore > Date.now()){ setTimeout(flush, it.notBefore - Date.now() + 50); return; }
     flushing = true;
     var p = it.uploaded ? Promise.resolve({ ok: true }) :
-      post({ action: 'clock', card: it.card, faceId: it.faceId || '', faceD: it.faceD, faceS: it.faceS, faceN: it.faceN, faceNF: it.faceNF, type: it.type, rid: it.rid, ts: it.ts, offline: !it.live, live: !!it.live, edited: it.edited || '', device: DEVICE, ot: !!it.ot });
+      post({ action: 'clock', card: it.card, faceId: it.faceId || '', faceD: it.faceD, faceS: it.faceS, faceN: it.faceN, faceNF: it.faceNF, faceW: it.faceW, faceL: it.faceL, faceD2: it.faceD2, faceA: it.faceA, type: it.type, rid: it.rid, ts: it.ts, offline: !it.live, live: !!it.live, edited: it.edited || '', device: DEVICE, ot: !!it.ot });
     p.then(function(res){
       if (!res.ok && res.code !== 'DUP'){
         // 後端拒收（例如舊卡）：記到最近紀錄讓人資看到，不再重送
@@ -816,7 +816,7 @@ body.nokey #setupMsg{display:block}
     var flag = flagFor(type, last, ts), t = new Date(ts);
     rid = rid || uid();
     var item = { rid: rid, card: card, type: type, ts: ts, photo: photo, live: true, ot: clockOT, notBefore: flag ? ts + SWITCH_MS + 500 : 0 };
-    if (face){ item.faceId = id; item.faceD = face.d; item.faceS = face.s; item.faceN = face.n; item.faceNF = face.nf; }
+    if (face){ item.faceId = id; item.faceD = face.d; item.faceS = face.s; item.faceN = face.n; item.faceNF = face.nf; item.faceW = face.w; item.faceL = face.l; item.faceD2 = face.d2; item.faceA = face.a; }
     var q = queue(); q.push(item);
     if (!setQueue(q)){ item.photo = ''; if (!setQueue(q)){
       if (face){ busy = false; failSound(); show('bad', '✖ Not clocked: tablet storage full', '', 'Please use your card or tell HR.'); afterResult(); return; }
@@ -1195,6 +1195,8 @@ body.nokey #setupMsg{display:block}
     if (!c || !me) return;
     var t1 = 0;
     faceReady().then(function(){ t1 = performance.now(); return faceDetectTwice(c); }).then(function(r){
+      // 10/21：刷卡那一刻臉常被卡片擋住（No face），改用掃卡前 3 秒內背景認臉看到的那張臉
+      if (!r && faceLast && Date.now() - faceLast.at < 3000){ r = faceLast.r; c = faceLast.c; }
       var o = { ts: Date.now(), id: id, n: me.n, ms: Math.round(performance.now() - t1), thr: F.thr };
       if (!r){ o.res = 'NOFACE'; o.img = faceThumb(c); }
       else {
@@ -1209,6 +1211,8 @@ body.nokey #setupMsg{display:block}
         o.res = o.d <= F.thr ? 'MATCH' : 'NOMATCH';
         if (best && best.d < o.d && best.d <= F.thr) o.res = 'OTHER';   // 比較像另一位登錄的人
         o.img = faceThumb(c, r.detection.box);
+        // 有卡證明是本人，又明顯不像別人：把這張臉學進去
+        if (o.res === 'MATCH' && o.d <= FACE_LEARN_MAX && (!best || best.d - o.d >= 0.1)) faceLearn(id, q, o.d);
       }
       var L = faceLog(); L.push(o); if (L.length > 200) L = L.slice(-200);
       if (!lsSet(FACELOG_STORE, L)){ L = L.slice(-50); lsSet(FACELOG_STORE, L); }
@@ -1219,9 +1223,33 @@ body.nokey #setupMsg{display:block}
 
   // 刷臉打卡（Alan 10/17：沒掃卡、掃臉也能過，只是久一點）：按了上班／下班後，掃卡的同時在背景認臉；
   // 只認登錄過的人，很有把握才算（FACE_ID_THR／FACE_ID_GAP），有卡先讀到就照刷卡。鏡頭裡有臉時倒數延長到 FACE_MODE_MS。
-  var faceIdGen = 0, faceTrying = false, faceIdT0 = 0, faceIdN = 0, faceIdNF = 0;   // 認了幾次、幾次找不到臉（寫進 Face 欄查速度）
+  // 認了幾次、幾次找不到臉、幾次有臉但沒把握（weak：距離大於 0.4；look-alike：跟第二像的人太接近），寫進 Face 欄查速度
+  var faceIdGen = 0, faceTrying = false, faceIdT0 = 0, faceIdN = 0, faceIdNF = 0, faceIdW = 0, faceIdL = 0, faceIdSecond = 0, faceIdAvg = false, faceLast = null;
+  // 自動學習（10/21）：很有把握認出來（或有卡證明是本人）、但這張臉跟已存的樣本有點不同（光線、角度、髮型），就多存一組。
+  // 登錄時的前 5 組永遠保留，學到的最多再存 5 組（後端上限 10 組），新的換掉最舊的；同一人 12 小時最多學一次，會同步到雲端
+  var FACE_LEARN_MIN = 0.2, FACE_LEARN_MAX = 0.42, FACE_LEARN_GAP = 0.15, FACE_KEEP = 5, FACE_MAX_SAMPLES = 10;
+  function faceLearn(id, desc, d){
+    if (d < FACE_LEARN_MIN || d > FACE_LEARN_MAX) return;   // 太像＝已經有了；太不像＝不確定，不學
+    var F = faceDb(), f = F.faces[id];
+    if (!f || (f.lt && Date.now() - f.lt < 12 * 3600e3)) return;
+    var v = Array.prototype.map.call(desc, function(x){ return +x.toFixed(4); });
+    if (f.d.length >= FACE_MAX_SAMPLES) f.d.splice(FACE_KEEP, 1);
+    f.d.push(v); f.lt = Date.now();
+    if (!lsSet(FACE_STORE, F)) return;
+    faceOp('save', id);
+  }
+  var faceRecent = [];
+  function faceRank(F, desc){
+    var best = null, second = null;
+    Object.keys(F.faces).forEach(function(k){
+      var d = faceMin(desc, F.faces[k].d), o = { id: k, n: F.faces[k].n, d: d };
+      if (!best || d < best.d){ second = best; best = o; } else if (!second || d < second.d) second = o;
+    });
+    return { best: best, second: second };
+  }
   function faceIdStart(){
-    var gen = ++faceIdGen; faceTrying = false; faceIdT0 = performance.now(); faceIdN = 0; faceIdNF = 0;
+    faceRecent = [];
+    var gen = ++faceIdGen; faceTrying = false; faceIdT0 = performance.now(); faceIdN = 0; faceIdNF = 0; faceIdW = 0; faceIdL = 0; faceIdSecond = 0; faceLast = null;
     if (enrolling || !Object.keys(faceDb().faces).length) return;
     faceReady().then(function(){ faceIdTry(gen); }).catch(function(){});
   }
@@ -1236,15 +1264,28 @@ body.nokey #setupMsg{display:block}
       faceIdN++;
       if (!r){ faceIdNF++; faceTrying = false; setTimeout(function(){ faceIdTry(gen); }, 50); return; }
       faceTrying = true;
-      var F = faceDb(), best = null, second = null;
-      Object.keys(F.faces).forEach(function(k){
-        var d = faceMin(r.descriptor, F.faces[k].d), o = { id: k, n: F.faces[k].n, d: d };
-        if (!best || d < best.d){ second = best; best = o; } else if (!second || d < second.d) second = o;
-      });
-      if (best && best.d <= FACE_ID_THR && (!second || second.d - best.d >= FACE_ID_GAP)){
+      faceLast = { r: r, c: c, at: Date.now() };
+      var F = faceDb(), desc = r.descriptor, k = faceRank(F, desc), best = k.best, second = k.second, avg = false;
+      // 10/21：單張沒把握時，把最近 2 到 3 張同一張臉的特徵平均再判一次（降低鏡頭雜訊；門檻不變）。
+      // 只平均彼此很像的（距離 < 0.3），中間換人就重來
+      faceRecent = faceRecent.filter(function(x){ return faceDist(x, desc) < 0.3; }).slice(-2);
+      faceRecent.push(desc);
+      var pass = function(b, s){ return b && b.d <= FACE_ID_THR && (!s || s.d - b.d >= FACE_ID_GAP); };
+      if (!pass(best, second) && faceRecent.length >= 2){
+        var m = new Float32Array(desc.length);
+        faceRecent.forEach(function(x){ for (var i = 0; i < m.length; i++) m[i] += x[i] / faceRecent.length; });
+        var k2 = faceRank(F, m);
+        if (pass(k2.best, k2.second)){ desc = m; best = k2.best; second = k2.second; avg = true; }
+      }
+      if (!pass(best, second)){
+        if (best && best.d > FACE_ID_THR) faceIdW++; else faceIdL++;
+      }
+      if (pass(best, second)){
+        faceIdSecond = second ? second.d : 0; faceIdAvg = avg;
+        if (!second || second.d - best.d >= FACE_LEARN_GAP) faceLearn(best.id, desc, best.d);
         var L = faceLog();
         L.push({ ts: Date.now(), id: best.id, n: best.n, ms: Math.round(performance.now() - faceIdT0), thr: FACE_ID_THR, res: 'FACEID',   // 從按鈕到認出來的總時間
-                 d: +best.d.toFixed(3), od: second ? +second.d.toFixed(3) : null, on: second ? second.n : '', img: faceThumb(c, r.detection.box) });
+                 d: +best.d.toFixed(3), od: second ? +second.d.toFixed(3) : null, on: second ? second.n : '', img: faceThumb(c, r.detection.box), avg: avg });
         if (L.length > 200) L = L.slice(-200);
         lsSet(FACELOG_STORE, L); renderFace();
         faceClock(best, mode);
@@ -1258,7 +1299,7 @@ body.nokey #setupMsg{display:block}
     touchIdle();
     var photo = takePhoto(); flash();
     var rid = uid();
-    clockOT = modeOT; clockFace = { d: best.d, s: +((performance.now() - faceIdT0) / 1000).toFixed(1), n: faceIdN, nf: faceIdNF };
+    clockOT = modeOT; clockFace = { d: best.d, s: +((performance.now() - faceIdT0) / 1000).toFixed(1), n: faceIdN, nf: faceIdNF, w: faceIdW, l: faceIdL, d2: faceIdSecond, a: faceIdAvg ? 1 : 0 };
     busy = true;
     setMode(null, true);
     localClock('', type, best.id, best.n, photo, rid, clockFace);
@@ -1471,6 +1512,8 @@ body.nokey #setupMsg{display:block}
         var q2 = lsGet(FACEOPS_STORE, []);
         if (q2.length && q2[0].id === it.id && q2[0].op === it.op) lsSet(FACEOPS_STORE, q2.slice(1));
         if (res.ver) faceVerWanted = res.ver;
+        // 雲端在這次存之前就是平板手上的版本：平板已經是最新的，不用整份重新下載（自動學習每次都會存）
+        if (res.prev && res.ver && it.op === 'save'){ var G = faceDb(); if (G.ver === res.prev){ G.ver = res.ver; G.syncAt = Date.now(); lsSet(FACE_STORE, G); } }
         faceOpsFlush();
       } else faceCloudText();
     }).catch(function(){ faceOpsBusy = false; faceCloudText(); });
@@ -1569,7 +1612,7 @@ body.nokey #setupMsg{display:block}
   // 自動更新（Alan 10/16）：每 5 分鐘、以及 App 切回前景時，看 GitHub 上的版本號跟這頁一不一樣；
   // 不一樣就等沒人在打卡（沒在刷卡、沒在存、鏡頭關著、結果訊息已顯示超過 10 秒）再重新整理。
   // 斷網佇列存在平板裡，重新整理不會掉資料。每次上傳新版要把 APP_VER 改掉，平板才會換。
-  var APP_VER = '2026-10-20-3';
+  var APP_VER = '2026-10-21-1';
   var newVer = '';
   // ?setup 顯示目前版本，發現新版還沒換時也寫出來，一眼確認平板有沒有更新
   document.getElementById('appVer').textContent = APP_VER;
