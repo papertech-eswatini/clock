@@ -307,6 +307,7 @@ body.nokey #setupMsg{display:block}
     <span id="faceModel">Model not loaded</span>
     <span id="faceCloud"></span>
   </div>
+  <div class="note" id="faceCfgTxt"></div>
   <div class="row">
     Face distance <select id="faceDistSel"></select>
     <button id="faceTest">▶ Live test</button>
@@ -1094,7 +1095,7 @@ body.nokey #setupMsg{display:block}
     M: { min: 0.11, size: 320, t: 'Normal (about 1.5 m)' },
     F: { min: 0.06, size: 416, t: 'Far (2 m or more) · slower' }
   };
-  function faceDist0(){ return FACE_DIST[lsGet('pte_clock_facedist_v1', 'M')] || FACE_DIST.M; }
+  function faceDist0(){ var D = FACE_DIST[lsGet('pte_clock_facedist_v1', 'M')] || FACE_DIST.M; return FACE_SIZE ? { min: D.min, size: FACE_SIZE, t: D.t } : D; }
   function facePick(a, src, noMin){
     var D = faceDist0(), best = null;
     (a || []).forEach(function(d){
@@ -1155,7 +1156,8 @@ body.nokey #setupMsg{display:block}
   }
   // 比對結果寫進 Clock Log「Face」欄（10/16 Alan：試用就先上線，HR 篩 Not match 查照片）
   var FACEQ_STORE = 'pte_clock_faceq_v1', faceFlushing = false;
-  function faceText(o){
+  function faceText(o){ return faceText0(o) + (o.sid ? ', face-only ' + o.sid.toLowerCase() : ''); }   // 自我查核結果一起寫進 Face 欄，每天的檢查從試算表算準確率
+  function faceText0(o){
     var d = function(v){ return ' (' + Number(v).toFixed(2) + ')'; };
     if (o.res === 'MATCH') return 'Match' + d(o.d);
     if (o.res === 'NOMATCH') return 'Not match' + d(o.d);
@@ -1243,11 +1245,27 @@ body.nokey #setupMsg{display:block}
   // 登錄時的前 5 組永遠保留，學到的最多再存 5 組（後端上限 10 組），新的換掉最舊的；同一人 12 小時最多學一次，會同步到雲端
   var FACE_LEARN_MIN = 0.2, FACE_LEARN_MAX = 0.42, FACE_LEARN_GAP = 0.15, FACE_KEEP = 5, FACE_MAX_SAMPLES = 10;
   var FACE_CARD_LEARN_MAX = 0.55;   // 有卡證明身分時可以學比較不像的臉
+  var FACE_LEARN_COOLDOWN_H = 12, FACE_RETRY_MS = 50, FACE_AVG_N = 3, FACE_SIZE = 0;
+  // 遠端微調（10/22 Alan：「給你權限，自我學習、自我精進，看每天要怎麼調整才能越來越快」）：
+  // 每天的自我檢查可以在後端 Script Properties 的 FACE_CFG 改這些數字，平板同步時套用，不用改程式。
+  // 每個數字都被夾在安全範圍內，就算設錯也不會變成容易認錯人（門檻最多只能到 0.42、差距最少 0.10）。
+  var FACE_CFG_RANGE = { thr: [0.36, 0.42, 0.4], gap: [0.10, 0.16, 0.12], learnMax: [0.38, 0.45, 0.42], cardLearnMax: [0.45, 0.58, 0.55],
+    learnCooldownH: [2, 24, 12], retryMs: [0, 300, 50], avgN: [1, 4, 3], modeMs: [8000, 20000, 12000] };
+  function faceCfgApply(c){
+    c = c || {}; var v = {};
+    Object.keys(FACE_CFG_RANGE).forEach(function(k){ var R = FACE_CFG_RANGE[k], x = Number(c[k]); v[k] = isFinite(x) && c[k] !== '' && c[k] != null ? Math.min(R[1], Math.max(R[0], x)) : R[2]; });
+    FACE_ID_THR = v.thr; FACE_ID_GAP = v.gap; FACE_LEARN_MAX = v.learnMax; FACE_CARD_LEARN_MAX = v.cardLearnMax;
+    FACE_LEARN_COOLDOWN_H = v.learnCooldownH; FACE_RETRY_MS = Math.round(v.retryMs); FACE_AVG_N = Math.round(v.avgN); FACE_MODE_MS = Math.round(v.modeMs);
+    FACE_SIZE = [224, 320, 416].indexOf(Number(c.size)) >= 0 ? Number(c.size) : 0;   // 0＝照各平板的掃臉距離
+    lsSet('pte_clock_facecfg_v1', c);
+    var el = document.getElementById('faceCfgTxt');
+    if (el) el.textContent = 'Tuning: match ≤ ' + v.thr + ', gap ≥ ' + v.gap + ', learn ≤ ' + v.learnMax + ' / card ' + v.cardLearnMax + ', every ' + v.learnCooldownH + ' h, retry ' + FACE_RETRY_MS + ' ms, average ' + FACE_AVG_N + ', wait ' + FACE_MODE_MS / 1000 + ' s' + (FACE_SIZE ? ', size ' + FACE_SIZE : '');
+  }
   function faceQual(r, c){ return r ? r.detection.score * r.detection.box.height / c.height : 0; }
   function faceLearn(id, desc, d, max){
     if (d < FACE_LEARN_MIN || d > (max || FACE_LEARN_MAX)) return;   // 太像＝已經有了；太不像＝不確定，不學
     var F = faceDb(), f = F.faces[id];
-    if (!f || (f.lt && Date.now() - f.lt < 12 * 3600e3)) return;
+    if (!f || (f.lt && Date.now() - f.lt < FACE_LEARN_COOLDOWN_H * 3600e3)) return;
     var v = Array.prototype.map.call(desc, function(x){ return +x.toFixed(4); });
     if (f.d.length >= FACE_MAX_SAMPLES) f.d.splice(FACE_KEEP, 1);
     f.d.push(v); f.lt = Date.now();
@@ -1278,17 +1296,17 @@ body.nokey #setupMsg{display:block}
     faceDetect(c).then(function(r){
       if (gen !== faceIdGen || !mode || busy) return;
       faceIdN++;
-      if (!r){ faceIdNF++; faceTrying = false; setTimeout(function(){ faceIdTry(gen); }, 50); return; }
+      if (!r){ faceIdNF++; faceTrying = false; setTimeout(function(){ faceIdTry(gen); }, FACE_RETRY_MS); return; }
       faceTrying = true;
       faceLast = { r: r, c: c, at: Date.now() };
       var fq = faceQual(r, c); if (!faceBest || fq > faceBest.q) faceBest = { r: r, c: c, at: Date.now(), q: fq };
       var F = faceDb(), desc = r.descriptor, k = faceRank(F, desc), best = k.best, second = k.second, avg = false;
       // 10/21：單張沒把握時，把最近 2 到 3 張同一張臉的特徵平均再判一次（降低鏡頭雜訊；門檻不變）。
       // 只平均彼此很像的（距離 < 0.3），中間換人就重來
-      faceRecent = faceRecent.filter(function(x){ return faceDist(x, desc) < 0.3; }).slice(-2);
+      faceRecent = faceRecent.filter(function(x){ return faceDist(x, desc) < 0.3; }).slice(-(FACE_AVG_N - 1));
       faceRecent.push(desc);
       var pass = function(b, s){ return b && b.d <= FACE_ID_THR && (!s || s.d - b.d >= FACE_ID_GAP); };
-      if (!pass(best, second) && faceRecent.length >= 2){
+      if (!pass(best, second) && FACE_AVG_N >= 2 && faceRecent.length >= 2){
         var m = new Float32Array(desc.length);
         faceRecent.forEach(function(x){ for (var i = 0; i < m.length; i++) m[i] += x[i] / faceRecent.length; });
         var k2 = faceRank(F, m);
@@ -1558,6 +1576,7 @@ body.nokey #setupMsg{display:block}
       : F.ver ? '・ Cloud backup: synced' + (F.syncAt ? ' ' + hms(new Date(F.syncAt)).slice(0, 5) : '') : '';
   }
   faceCloudText();
+  faceCfgApply(lsGet('pte_clock_facecfg_v1', {}));
 
   // 有人登錄過就在開頁 15 秒後先把模型載好，打卡時不用等
   if (Object.keys(faceDb().faces).length) setTimeout(function(){ faceReady().catch(function(){}); }, 15000);
@@ -1613,7 +1632,7 @@ body.nokey #setupMsg{display:block}
       if (!r.ok && r.code === 'KEY'){ document.body.classList.add('nokey'); return; }
       net(true);
       if (r.ok && r.cards) lsSet(SYNC_STORE, { cards: r.cards, last: r.last || {}, at: Date.now() });
-      if (r.ok) faceCloudSync(r.faceVer || '');
+      if (r.ok){ faceCloudSync(r.faceVer || ''); if (r.faceCfg) faceCfgApply(r.faceCfg); }
       flush();
     }).catch(function(){ net(false); });
   }
@@ -1632,7 +1651,7 @@ body.nokey #setupMsg{display:block}
   // 自動更新（Alan 10/16）：每 5 分鐘、以及 App 切回前景時，看 GitHub 上的版本號跟這頁一不一樣；
   // 不一樣就等沒人在打卡（沒在刷卡、沒在存、鏡頭關著、結果訊息已顯示超過 10 秒）再重新整理。
   // 斷網佇列存在平板裡，重新整理不會掉資料。每次上傳新版要把 APP_VER 改掉，平板才會換。
-  var APP_VER = '2026-10-21-2';
+  var APP_VER = '2026-10-22-1';
   var newVer = '';
   // ?setup 顯示目前版本，發現新版還沒換時也寫出來，一眼確認平板有沒有更新
   document.getElementById('appVer').textContent = APP_VER;
