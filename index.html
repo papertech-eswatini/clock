@@ -316,7 +316,8 @@ body.nokey #setupMsg{display:block}
     <div class="stat"><b id="fN">0</b><small>Checks</small></div>
     <div class="stat"><b id="fOk">0</b><small>Match</small></div>
     <div class="stat warn"><b id="fBad">0</b><small>Not match</small></div>
-    <div class="stat"><b id="fNone">0</b><small>No face</small></div>
+    <div class="stat"><b id="fNone">0</b><small>Unclear / no face</small></div>
+    <div class="stat"><b id="fSelf">-</b><small>Self-check: face alone right (card-verified)</small></div>
     <div class="stat"><b id="fMs">-</b><small>Avg time (s)</small></div>
   </div>
   <div class="tablewrap">
@@ -1159,7 +1160,8 @@ body.nokey #setupMsg{display:block}
     if (o.res === 'MATCH') return 'Match' + d(o.d);
     if (o.res === 'NOMATCH') return 'Not match' + d(o.d);
     if (o.res === 'OTHER') return 'Not match, looks like ' + o.on + d(o.od);
-    return 'No face';
+    if (o.res === 'UNCLEAR') return 'Unclear' + d(o.d);
+    return 'Face not readable';
   }
   // 等打卡紀錄確定成立（沒在存、最近紀錄裡有這一筆）才排上傳；60 秒內重掃那種沒有紀錄的就不送
   function faceSend(rid, text, n){
@@ -1194,10 +1196,12 @@ body.nokey #setupMsg{display:block}
     var F = faceDb(), me = F.faces[id];
     if (!c || !me) return;
     var t1 = 0;
+    var sessBest = faceBest && Date.now() - faceBest.at < 10000 ? faceBest : null;   // 這次打卡過程中拍得最清楚的臉
     faceReady().then(function(){ t1 = performance.now(); return faceDetectTwice(c); }).then(function(r){
-      // 10/21：刷卡那一刻臉常被卡片擋住（No face），改用掃卡前 3 秒內背景認臉看到的那張臉
-      if (!r && faceLast && Date.now() - faceLast.at < 3000){ r = faceLast.r; c = faceLast.c; }
-      var o = { ts: Date.now(), id: id, n: me.n, ms: Math.round(performance.now() - t1), thr: F.thr };
+      // 10/21 晚 Alan 抓到好幾筆「本人卻 Not match／No face」：用真實照片測，刷卡那一刻臉常被卡片、手擋住或在逆光裡。
+      // 改用這次打卡過程中最清楚的那張臉（臉的大小 × 偵測分數最高），刷卡那張只在比較清楚時才用
+      if (sessBest && (!r || faceQual(sessBest.r, sessBest.c) > faceQual(r, c))){ r = sessBest.r; c = sessBest.c; }
+      var o = { ts: Date.now(), id: id, n: me.n, ms: Math.round(performance.now() - t1), thr: F.thr, card: 1 };
       if (!r){ o.res = 'NOFACE'; o.img = faceThumb(c); }
       else {
         var q = r.descriptor, best = null;
@@ -1208,11 +1212,21 @@ body.nokey #setupMsg{display:block}
           if (!best || d < best.d) best = { n: F.faces[k].n, d: d };
         });
         if (best){ o.od = +best.d.toFixed(3); o.on = best.n; }
-        o.res = o.d <= F.thr ? 'MATCH' : 'NOMATCH';
-        if (best && best.d < o.d && best.d <= F.thr) o.res = 'OTHER';   // 比較像另一位登錄的人
+        // 標記只在證據夠強時才說「不像本人」：
+        // Match＝本人最像；Not match, looks like＝刷臉規則會很有把握地認成別人；Not match＝離本人很遠（> 0.6）；其他都寫 Unclear
+        if (o.d <= F.thr && (!best || best.d >= o.d)) o.res = 'MATCH';
+        else if (best && best.d <= FACE_ID_THR && o.d - best.d >= FACE_ID_GAP) o.res = 'OTHER';
+        else if (o.d > 0.6 && (!best || best.d > 0.5)) o.res = 'NOMATCH';
+        else o.res = 'UNCLEAR';
+        // 自我查核：如果只靠臉，會不會認對人（認對／認錯／沒把握），?setup 顯示準確率
+        o.top1 = !best || o.d < best.d;
+        o.sid = o.top1 && o.d <= FACE_ID_THR && (!best || best.d - o.d >= FACE_ID_GAP) ? 'RIGHT'
+              : (!o.top1 && best.d <= FACE_ID_THR && o.d - best.d >= FACE_ID_GAP ? 'WRONG' : 'UNSURE');
         o.img = faceThumb(c, r.detection.box);
-        // 有卡證明是本人，又明顯不像別人：把這張臉學進去
-        if (o.res === 'MATCH' && o.d <= FACE_LEARN_MAX && (!best || best.d - o.d >= 0.1)) faceLearn(id, q, o.d);
+        // 自我訓練：有卡就確定是本人。臉夠清楚（偵測分數 ≥ 0.7、臉佔畫面高 ≥ 15%）就學進去，連現在認不太出來的也學，
+        // 這樣模型容易混淆的人（例如常被認成 Christian 的幾位）會越來越準
+        var box = r.detection.box;
+        if (o.d <= FACE_CARD_LEARN_MAX && r.detection.score >= 0.7 && box.height >= c.height * 0.15) faceLearn(id, q, o.d, FACE_CARD_LEARN_MAX);
       }
       var L = faceLog(); L.push(o); if (L.length > 200) L = L.slice(-200);
       if (!lsSet(FACELOG_STORE, L)){ L = L.slice(-50); lsSet(FACELOG_STORE, L); }
@@ -1224,12 +1238,14 @@ body.nokey #setupMsg{display:block}
   // 刷臉打卡（Alan 10/17：沒掃卡、掃臉也能過，只是久一點）：按了上班／下班後，掃卡的同時在背景認臉；
   // 只認登錄過的人，很有把握才算（FACE_ID_THR／FACE_ID_GAP），有卡先讀到就照刷卡。鏡頭裡有臉時倒數延長到 FACE_MODE_MS。
   // 認了幾次、幾次找不到臉、幾次有臉但沒把握（weak：距離大於 0.4；look-alike：跟第二像的人太接近），寫進 Face 欄查速度
-  var faceIdGen = 0, faceTrying = false, faceIdT0 = 0, faceIdN = 0, faceIdNF = 0, faceIdW = 0, faceIdL = 0, faceIdSecond = 0, faceIdAvg = false, faceLast = null;
+  var faceIdGen = 0, faceTrying = false, faceIdT0 = 0, faceIdN = 0, faceIdNF = 0, faceIdW = 0, faceIdL = 0, faceIdSecond = 0, faceIdAvg = false, faceLast = null, faceBest = null;
   // 自動學習（10/21）：很有把握認出來（或有卡證明是本人）、但這張臉跟已存的樣本有點不同（光線、角度、髮型），就多存一組。
   // 登錄時的前 5 組永遠保留，學到的最多再存 5 組（後端上限 10 組），新的換掉最舊的；同一人 12 小時最多學一次，會同步到雲端
   var FACE_LEARN_MIN = 0.2, FACE_LEARN_MAX = 0.42, FACE_LEARN_GAP = 0.15, FACE_KEEP = 5, FACE_MAX_SAMPLES = 10;
-  function faceLearn(id, desc, d){
-    if (d < FACE_LEARN_MIN || d > FACE_LEARN_MAX) return;   // 太像＝已經有了；太不像＝不確定，不學
+  var FACE_CARD_LEARN_MAX = 0.55;   // 有卡證明身分時可以學比較不像的臉
+  function faceQual(r, c){ return r ? r.detection.score * r.detection.box.height / c.height : 0; }
+  function faceLearn(id, desc, d, max){
+    if (d < FACE_LEARN_MIN || d > (max || FACE_LEARN_MAX)) return;   // 太像＝已經有了；太不像＝不確定，不學
     var F = faceDb(), f = F.faces[id];
     if (!f || (f.lt && Date.now() - f.lt < 12 * 3600e3)) return;
     var v = Array.prototype.map.call(desc, function(x){ return +x.toFixed(4); });
@@ -1249,7 +1265,7 @@ body.nokey #setupMsg{display:block}
   }
   function faceIdStart(){
     faceRecent = [];
-    var gen = ++faceIdGen; faceTrying = false; faceIdT0 = performance.now(); faceIdN = 0; faceIdNF = 0; faceIdW = 0; faceIdL = 0; faceIdSecond = 0; faceLast = null;
+    var gen = ++faceIdGen; faceTrying = false; faceIdT0 = performance.now(); faceIdN = 0; faceIdNF = 0; faceIdW = 0; faceIdL = 0; faceIdSecond = 0; faceLast = null; faceBest = null;
     if (enrolling || !Object.keys(faceDb().faces).length) return;
     faceReady().then(function(){ faceIdTry(gen); }).catch(function(){});
   }
@@ -1265,6 +1281,7 @@ body.nokey #setupMsg{display:block}
       if (!r){ faceIdNF++; faceTrying = false; setTimeout(function(){ faceIdTry(gen); }, 50); return; }
       faceTrying = true;
       faceLast = { r: r, c: c, at: Date.now() };
+      var fq = faceQual(r, c); if (!faceBest || fq > faceBest.q) faceBest = { r: r, c: c, at: Date.now(), q: fq };
       var F = faceDb(), desc = r.descriptor, k = faceRank(F, desc), best = k.best, second = k.second, avg = false;
       // 10/21：單張沒把握時，把最近 2 到 3 張同一張臉的特徵平均再判一次（降低鏡頭雜訊；門檻不變）。
       // 只平均彼此很像的（距離 < 0.3），中間換人就重來
@@ -1351,16 +1368,19 @@ body.nokey #setupMsg{display:block}
     if (!document.body.classList.contains('admin')) return;
     var F = faceDb(), L = faceLog();
     document.getElementById('faceThr').value = F.thr;
-    var n = L.length, ok = 0, bad = 0, none = 0, ms = 0, per = {};
+    var n = L.length, ok = 0, bad = 0, none = 0, ms = 0, per = {}, sc = { n: 0, r: 0, w: 0 };
     L.forEach(function(o){
       per[o.id] = per[o.id] || { n: 0, bad: 0 }; per[o.id].n++;
-      if (o.res === 'MATCH' || o.res === 'FACEID') ok++; else if (o.res === 'NOFACE') none++; else { bad++; per[o.id].bad++; }
+      if (o.res === 'MATCH' || o.res === 'FACEID') ok++; else if (o.res === 'NOFACE' || o.res === 'UNCLEAR') none++; else { bad++; per[o.id].bad++; }
+      if (o.sid){ sc.n++; if (o.sid === 'RIGHT') sc.r++; else if (o.sid === 'WRONG') sc.w++; }
       ms += o.ms || 0;
     });
     document.getElementById('fN').textContent = n;
     document.getElementById('fOk').textContent = ok;
     document.getElementById('fBad').textContent = bad;
     document.getElementById('fNone').textContent = none;
+    // 自我查核：刷卡（確定是誰）時，只靠臉會怎樣：認對幾次、認錯幾次（認錯要是 0）
+    document.getElementById('fSelf').textContent = sc.n ? Math.round(sc.r / sc.n * 100) + '% (' + sc.w + ' wrong)' : '-';
     document.getElementById('fMs').textContent = n ? (ms / n / 1000).toFixed(1) : '-';
     var fl = document.getElementById('faceList'); fl.innerHTML = '';
     Object.keys(F.faces).sort(function(a, b){ return F.faces[a].n < F.faces[b].n ? -1 : 1; }).forEach(function(id){
@@ -1377,7 +1397,7 @@ body.nokey #setupMsg{display:block}
     });
     if (!Object.keys(F.faces).length) fl.innerHTML = '<tr><td colspan="6" style="color:#8a94a3">Nobody enrolled yet</td></tr>';
     var lg = document.getElementById('faceLog'); lg.innerHTML = '';
-    var TAG = { FACEID: ['ok', 'Face clock-in (no card)'], MATCH: ['ok', 'Match'], NOMATCH: ['bad', 'Not match'], OTHER: ['bad', 'Looks like someone else'], NOFACE: ['none', 'No face found'] };
+    var TAG = { FACEID: ['ok', 'Face clock-in (no card)'], MATCH: ['ok', 'Match'], NOMATCH: ['bad', 'Not match'], OTHER: ['bad', 'Looks like someone else'], NOFACE: ['none', 'Face not readable'], UNCLEAR: ['none', 'Unclear'] };
     L.slice().reverse().slice(0, 60).forEach(function(o){
       var tr = document.createElement('tr'), d = new Date(o.ts);
       var im = document.createElement('td'), img = document.createElement('img'); img.src = o.img || ''; img.alt = ''; im.appendChild(img); tr.appendChild(im);
@@ -1612,7 +1632,7 @@ body.nokey #setupMsg{display:block}
   // 自動更新（Alan 10/16）：每 5 分鐘、以及 App 切回前景時，看 GitHub 上的版本號跟這頁一不一樣；
   // 不一樣就等沒人在打卡（沒在刷卡、沒在存、鏡頭關著、結果訊息已顯示超過 10 秒）再重新整理。
   // 斷網佇列存在平板裡，重新整理不會掉資料。每次上傳新版要把 APP_VER 改掉，平板才會換。
-  var APP_VER = '2026-10-21-1';
+  var APP_VER = '2026-10-21-2';
   var newVer = '';
   // ?setup 顯示目前版本，發現新版還沒換時也寫出來，一眼確認平板有沒有更新
   document.getElementById('appVer').textContent = APP_VER;
