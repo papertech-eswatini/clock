@@ -207,6 +207,69 @@ body.asleep .halo::before,body.asleep .halo::after,body.nokey .halo::before,body
 @media (prefers-reduced-motion:reduce){.halo::before,.halo::after{animation:none}}
 body.nokey main,body.nokey footer{display:none}
 body.nokey #setupMsg{display:block}
+/* 10/23 生日彩蛋（Alan：蛋糕動畫、煙火浮誇一點、生日快樂大字、英文語音）：今天生日的人打卡成功才跑。
+   全部 pointer-events:none 不擋點擊；9 秒後淡出，下一位按按鈕就馬上收掉。 */
+#bday{position:fixed;inset:0;z-index:60;pointer-events:none;display:none;
+  background:radial-gradient(ellipse at 50% 38%,rgba(10,22,40,.72),rgba(5,11,22,.94));opacity:0;transition:opacity .4s}
+#bday.on{display:block;opacity:1}
+#bday.out{opacity:0;transition:opacity .7s}
+#bday canvas{position:absolute;inset:0;width:100%;height:100%}
+#bday .stage{position:absolute;left:0;right:0;top:12%;display:flex;flex-direction:column;align-items:center;text-align:center}
+#bday .cake{width:min(46vw,300px);height:auto;overflow:visible;filter:drop-shadow(0 0 28px rgba(216,184,120,.55))}
+#bday .tier{transform-box:fill-box;transform-origin:50% 100%;opacity:0}
+#bday.on .t1{animation:bdDrop .55s cubic-bezier(.3,1.5,.5,1) .1s forwards}
+#bday.on .t2{animation:bdDrop .55s cubic-bezier(.3,1.5,.5,1) .45s forwards}
+#bday.on .t3{animation:bdDrop .55s cubic-bezier(.3,1.5,.5,1) .8s forwards}
+#bday .candle{transform-box:fill-box;transform-origin:50% 100%;opacity:0}
+#bday.on .candle{animation:bdPop .35s ease-out forwards}
+#bday .flame{transform-box:fill-box;transform-origin:50% 100%;opacity:0}
+#bday.on .flame{animation:bdLight .3s ease-out forwards,bdFlick .18s ease-in-out infinite alternate}
+#bday .glow{opacity:0}
+#bday.on .glow{animation:bdGlow 1.6s ease-in-out 1.9s infinite alternate}
+#bday .hb{margin-top:14px;font-size:clamp(40px,9vw,92px);font-weight:900;line-height:1.02;letter-spacing:1px;white-space:nowrap}
+#bday .hb span{display:inline-block;opacity:0;transform:translateY(-60px) scale(.4) rotate(-12deg);
+  background:linear-gradient(180deg,#fff6dc 0%,#f3dfb3 35%,#d8b878 60%,#b48f55 100%);-webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 3px 0 rgba(90,60,20,.6)) drop-shadow(0 0 18px rgba(243,223,179,.55))}
+#bday.on .hb span{animation:bdLetter .6s cubic-bezier(.2,1.6,.4,1) forwards,bdWave 1.4s ease-in-out infinite}
+#bday .hb .sp{width:.32em}
+#bday .nm{margin-top:10px;font-size:clamp(34px,7vw,72px);font-weight:800;color:#fff;opacity:0;text-shadow:0 0 24px rgba(95,211,148,.55)}
+#bday.on .nm{animation:bdName .7s cubic-bezier(.2,1.5,.4,1) 1.9s forwards}
+#bday .wish{margin-top:8px;font-size:clamp(16px,2.6vw,24px);color:var(--gold3);letter-spacing:2px;opacity:0}
+#bday.on .wish{animation:bdFade .6s ease-out 2.4s forwards}
+@keyframes bdDrop{0%{opacity:0;transform:translateY(-140px) scaleY(1.15)}70%{opacity:1;transform:translateY(0) scaleY(.88)}100%{opacity:1;transform:none}}
+@keyframes bdPop{0%{opacity:0;transform:scaleY(0)}100%{opacity:1;transform:none}}
+@keyframes bdLight{0%{opacity:0;transform:scale(0)}100%{opacity:1;transform:none}}
+@keyframes bdFlick{0%{transform:scale(1,1) skewX(-3deg)}100%{transform:scale(.86,1.12) skewX(4deg)}}
+@keyframes bdGlow{0%{opacity:.25}100%{opacity:.75}}
+@keyframes bdLetter{to{opacity:1;transform:none}}
+@keyframes bdWave{50%{translate:0 -8px}}
+@keyframes bdName{0%{opacity:0;transform:scale(2.2)}100%{opacity:1;transform:none}}
+@keyframes bdFade{to{opacity:1}}
+/* 10/23 Alan：Alan（PTE0015）、Joe（PTE0054）每次打卡都有專屬彩蛋。Alan＝金色皇冠＋聚光燈；Joe＝霓虹火箭 */
+#bday .emb{display:none;width:min(40vw,230px);height:auto;overflow:visible}
+#bday.th-alan .cake,#bday.th-joe .cake{display:none}
+#bday.th-alan .e-alan,#bday.th-joe .e-joe{display:block}
+#bday .beams{display:none;position:absolute;left:50%;top:-10%;width:160vmax;height:160vmax;margin-left:-80vmax;
+  background:conic-gradient(from 0deg,transparent 0 8deg,rgba(255,214,120,.16) 8deg 16deg,transparent 16deg 52deg,rgba(255,214,120,.12) 52deg 60deg,transparent 60deg 112deg,rgba(255,214,120,.16) 112deg 120deg,transparent 120deg 172deg,rgba(255,214,120,.12) 172deg 180deg,transparent 180deg 232deg,rgba(255,214,120,.16) 232deg 240deg,transparent 240deg 292deg,rgba(255,214,120,.12) 292deg 300deg,transparent 300deg);
+  border-radius:50%;animation:bdSpin 14s linear infinite;opacity:0}
+#bday.th-alan .beams{display:block;animation:bdSpin 14s linear infinite,bdFade .8s ease-out .2s forwards}
+#bday.th-alan.on .e-alan{animation:bdCrown 1s cubic-bezier(.2,1.5,.4,1) .15s both}
+#bday .e-alan .shine{animation:bdShine 2.2s ease-in-out 1.2s infinite}
+#bday.th-joe.on .e-joe{animation:bdRocket 1.1s cubic-bezier(.2,1.3,.4,1) .1s both,bdShake .12s linear 1.2s infinite alternate}
+#bday .e-joe .fire{transform-box:fill-box;transform-origin:50% 0;animation:bdFire .1s linear infinite alternate}
+#bday.th-joe .hb span{background:linear-gradient(180deg,#f2fffb 0%,#9fffe0 40%,#2fd3ff 75%,#1b8cff 100%);-webkit-background-clip:text;background-clip:text;
+  filter:drop-shadow(0 3px 0 rgba(10,40,80,.7)) drop-shadow(0 0 20px rgba(47,211,255,.75))}
+#bday.th-joe .nm{text-shadow:0 0 24px rgba(47,211,255,.8)}
+#bday.th-joe .wish{color:#bdf3ff}
+#bday.th-alan .nm{text-shadow:0 0 26px rgba(255,214,120,.85)}
+@keyframes bdSpin{to{transform:rotate(360deg)}}
+@keyframes bdCrown{0%{opacity:0;transform:translateY(-220px) rotate(-25deg) scale(.5)}100%{opacity:1;transform:none}}
+@keyframes bdShine{0%,60%{transform:translateX(-140px)}100%{transform:translateX(160px)}}
+@keyframes bdRocket{0%{opacity:0;transform:translateY(70vh) scale(.6)}100%{opacity:1;transform:none}}
+@keyframes bdShake{0%{translate:-1.5px 0}100%{translate:1.5px 1px}}
+@keyframes bdFire{0%{transform:scaleY(.8)}100%{transform:scaleY(1.25)}}
+@media (prefers-reduced-motion:reduce){#bday .beams{animation:none}#bday.th-joe.on .e-joe{animation:none}}
+@media (prefers-reduced-motion:reduce){#bday.on .hb span{animation:bdLetter .01s forwards}#bday.on .flame{animation:bdLight .01s forwards}}
 </style>
 </head>
 <body>
@@ -275,6 +338,70 @@ body.nokey #setupMsg{display:block}
     <div id="flash"></div>
     <canvas id="faceOv"></canvas>
   </div>
+  <div id="bday"><canvas></canvas>
+    <div class="beams"></div>
+    <div class="stage">
+    <svg class="cake" viewBox="0 0 240 232" aria-hidden="true">
+      <defs><radialGradient id="bdGlowG"><stop offset="0" stop-color="#ffd27a" stop-opacity=".9"/><stop offset="1" stop-color="#ffd27a" stop-opacity="0"/></radialGradient></defs>
+      <ellipse class="glow" cx="120" cy="30" rx="80" ry="42" fill="url(#bdGlowG)"/>
+      <ellipse cx="120" cy="218" rx="112" ry="12" fill="#d8b878" opacity=".85"/>
+      <g class="tier t1">
+        <rect x="22" y="160" width="196" height="56" rx="10" fill="#b98a5a"/>
+        <path d="M22 170 Q22 160 32 160 H208 Q218 160 218 170 V176 Q206 186 196 176 Q184 190 172 176 Q160 186 148 176 Q136 192 124 176 Q112 186 100 176 Q88 190 76 176 Q64 186 52 176 Q40 190 30 176 Q24 180 22 176 Z" fill="#f3dfb3"/>
+        <g fill="#5fd394"><circle cx="50" cy="200" r="3"/><circle cx="96" cy="196" r="3"/><circle cx="144" cy="202" r="3"/><circle cx="190" cy="196" r="3"/></g>
+        <g fill="#ff8fb1"><circle cx="72" cy="204" r="3"/><circle cx="120" cy="198" r="3"/><circle cx="168" cy="206" r="3"/></g>
+      </g>
+      <g class="tier t2">
+        <rect x="46" y="112" width="148" height="50" rx="9" fill="#d8b878"/>
+        <path d="M46 121 Q46 112 55 112 H185 Q194 112 194 121 V127 Q184 137 174 127 Q162 140 150 127 Q138 136 126 127 Q114 141 102 127 Q90 136 78 127 Q66 140 56 127 Q50 131 46 127 Z" fill="#ffffff"/>
+        <path d="M58 150 H182" stroke="#b48f55" stroke-width="3" stroke-dasharray="2 9" stroke-linecap="round"/>
+      </g>
+      <g class="tier t3">
+        <rect x="70" y="72" width="100" height="42" rx="8" fill="#f3dfb3"/>
+        <path d="M70 80 Q70 72 78 72 H162 Q170 72 170 80 V85 Q162 94 154 85 Q144 96 134 85 Q124 94 114 85 Q104 96 94 85 Q84 94 76 85 Q72 88 70 85 Z" fill="#ff8fb1"/>
+        <g fill="#b48f55"><circle cx="92" cy="102" r="2.6"/><circle cx="120" cy="99" r="2.6"/><circle cx="148" cy="102" r="2.6"/></g>
+      </g>
+      <g>
+        <g class="candle" style="animation-delay:1.25s"><rect x="84" y="46" width="8" height="27" rx="2" fill="#fff"/><path d="M84 52 L92 49 M84 60 L92 57 M84 68 L92 65" stroke="#ff8fb1" stroke-width="2.5"/></g>
+        <g class="candle" style="animation-delay:1.33s"><rect x="101" y="42" width="8" height="31" rx="2" fill="#fff"/><path d="M101 48 L109 45 M101 56 L109 53 M101 64 L109 61" stroke="#5fd394" stroke-width="2.5"/></g>
+        <g class="candle" style="animation-delay:1.41s"><rect x="116" y="38" width="8" height="35" rx="2" fill="#fff"/><path d="M116 44 L124 41 M116 52 L124 49 M116 60 L124 57 M116 68 L124 65" stroke="#d8b878" stroke-width="2.5"/></g>
+        <g class="candle" style="animation-delay:1.49s"><rect x="131" y="42" width="8" height="31" rx="2" fill="#fff"/><path d="M131 48 L139 45 M131 56 L139 53 M131 64 L139 61" stroke="#5fd394" stroke-width="2.5"/></g>
+        <g class="candle" style="animation-delay:1.57s"><rect x="148" y="46" width="8" height="27" rx="2" fill="#fff"/><path d="M148 52 L156 49 M148 60 L156 57 M148 68 L156 65" stroke="#ff8fb1" stroke-width="2.5"/></g>
+      </g>
+      <g>
+        <path class="flame" style="animation-delay:1.7s,1.7s" d="M88 44 C82 36 86 30 88 22 C90 30 94 36 88 44 Z" fill="#ffb238"/>
+        <path class="flame" style="animation-delay:1.78s,1.78s" d="M105 40 C99 32 103 26 105 18 C107 26 111 32 105 40 Z" fill="#ffc94d"/>
+        <path class="flame" style="animation-delay:1.86s,1.86s" d="M120 36 C114 28 118 22 120 14 C122 22 126 28 120 36 Z" fill="#ffb238"/>
+        <path class="flame" style="animation-delay:1.94s,1.94s" d="M135 40 C129 32 133 26 135 18 C137 26 141 32 135 40 Z" fill="#ffc94d"/>
+        <path class="flame" style="animation-delay:2.02s,2.02s" d="M152 44 C146 36 150 30 152 22 C154 30 158 36 152 44 Z" fill="#ffb238"/>
+      </g>
+    </svg>
+    <svg class="emb e-alan" viewBox="0 0 240 170" aria-hidden="true">
+      <defs>
+        <linearGradient id="vipGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff2c4"/><stop offset=".45" stop-color="#ffd27a"/><stop offset="1" stop-color="#b48f55"/></linearGradient>
+        <clipPath id="vipCrownClip"><path d="M20 130 L8 40 L66 88 L120 14 L174 88 L232 40 L220 130 Z"/></clipPath>
+      </defs>
+      <path d="M20 130 L8 40 L66 88 L120 14 L174 88 L232 40 L220 130 Z" fill="url(#vipGold)" stroke="#7a5a2a" stroke-width="3" stroke-linejoin="round"/>
+      <rect x="18" y="128" width="204" height="30" rx="8" fill="url(#vipGold)" stroke="#7a5a2a" stroke-width="3"/>
+      <g clip-path="url(#vipCrownClip)"><rect class="shine" x="0" y="0" width="40" height="170" fill="#fff" opacity=".55" transform="skewX(-20)"/></g>
+      <circle cx="8" cy="40" r="9" fill="#fff2c4" stroke="#7a5a2a" stroke-width="3"/><circle cx="120" cy="14" r="10" fill="#fff2c4" stroke="#7a5a2a" stroke-width="3"/><circle cx="232" cy="40" r="9" fill="#fff2c4" stroke="#7a5a2a" stroke-width="3"/>
+      <circle cx="70" cy="143" r="7" fill="#ff5d73"/><circle cx="120" cy="143" r="9" fill="#2fb0ff"/><circle cx="170" cy="143" r="7" fill="#5fd394"/>
+      <path d="M120 70 l8 16 18 3-13 12 3 18-16-8-16 8 3-18-13-12 18-3z" fill="#fff8e0" stroke="#b48f55" stroke-width="2"/>
+    </svg>
+    <svg class="emb e-joe" viewBox="0 0 200 250" aria-hidden="true">
+      <defs><linearGradient id="vipBody" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#cfe9ff"/><stop offset=".5" stop-color="#ffffff"/><stop offset="1" stop-color="#9cc7ef"/></linearGradient></defs>
+      <path class="fire" d="M78 196 Q100 262 122 196 Z" fill="#ffb238"/>
+      <path class="fire" d="M88 196 Q100 238 112 196 Z" fill="#fff2a8"/>
+      <path d="M70 150 L38 196 L70 186 Z" fill="#2fd3ff" stroke="#0c4a7a" stroke-width="3" stroke-linejoin="round"/>
+      <path d="M130 150 L162 196 L130 186 Z" fill="#2fd3ff" stroke="#0c4a7a" stroke-width="3" stroke-linejoin="round"/>
+      <path d="M100 8 Q140 50 136 150 L130 196 H70 L64 150 Q60 50 100 8 Z" fill="url(#vipBody)" stroke="#0c4a7a" stroke-width="3" stroke-linejoin="round"/>
+      <path d="M100 8 Q122 30 130 56 H70 Q78 30 100 8 Z" fill="#ff5d73" stroke="#0c4a7a" stroke-width="3" stroke-linejoin="round"/>
+      <circle cx="100" cy="100" r="21" fill="#2fd3ff" stroke="#0c4a7a" stroke-width="4"/>
+      <circle cx="93" cy="93" r="6" fill="#e9fbff"/>
+      <text x="100" y="172" text-anchor="middle" font-size="20" font-weight="900" fill="#0c4a7a" font-family="Segoe UI,Arial,sans-serif">JOE</text>
+    </svg>
+    <div class="hb"></div><div class="nm"></div><div class="wish"></div>
+  </div></div>
   <div id="result">
     <div class="big">Tap Clock In or Clock Out</div>
     <div class="small">Then show your card to the camera</div>
@@ -717,6 +844,7 @@ body.nokey #setupMsg{display:block}
   }
   function setMode(m, keepResult){
     mode = m; modeAt = Date.now();
+    if (m) bdayStop();
     var bar = document.getElementById('modeBar');
     if (m){
       camwrap.classList.add('scan');
@@ -909,6 +1037,152 @@ body.nokey #setupMsg{display:block}
       okSound(type, String(who).split(' ・ ')[0]);
       show(type === 'IN' ? 'in' : 'out', nm + ' ✔', who, tm);
     }
+    bdayParty(type, who);
+  }
+
+  /* ---------- 生日彩蛋（Alan 10/23：蛋糕動畫、煙火浮誇一點、生日快樂大字、英文語音）----------
+     後端 sync 每 4 分鐘給今天生日的工號（只有工號，沒有生日日期）。打卡成功（上班、下班、加班、刷臉都走 resultFor）就跑：
+     蛋糕三層掉下來、點蠟燭；滿天煙火＋彩紙；HAPPY BIRTHDAY 一個字一個字跳出來；平常的歡迎語音念完名字後，
+     英文語音念「Happy birthday, 名字!」，再用嗶聲彈生日快樂歌前兩句。Alan、Joe 平常每次打卡也有專屬版（VIP，見下面）。全程不擋點擊，11 秒後淡出；下一位按按鈕就馬上收掉。
+     測試：網址加 ?bday=PTE0003（或 ?bday=all）就當作那個人今天生日，只影響這台平板這次打開的頁面。 */
+  var BDAY_MS = 11000, bdayLoop = 0, bdayEnd = 0, bdayTimers = [], bdayUtt = null;
+  var BDAY_TEST = (/[?&]bday=([\w-]+)/.exec(location.search) || [])[1] || '';
+  var BDAY_COLS = ['#ffd27a', '#f3dfb3', '#ffffff', '#5fd394', '#ff8fb1', '#7fc8ff', '#ffb238'];
+  var fw = { rockets: [], sparks: [], confetti: [] }, fwCols = BDAY_COLS;
+  function isBday(id){
+    if (!id) return false;
+    if (BDAY_TEST && (BDAY_TEST === 'all' || BDAY_TEST.toUpperCase() === id)) return true;
+    var b = (lsGet(SYNC_STORE, {}) || {}).bday;
+    return !!(b && b.date === dayKey(new Date()) && b.ids && b.ids.indexOf(id) >= 0);
+  }
+  function bdayLater(fn, ms){ bdayTimers.push(setTimeout(fn, ms)); }
+  // 10/23 Alan：Alan、Joe 每次打卡都有專屬彩蛋（生日優先）。測試：網址加 ?vip=PTE0015 或 ?vip=PTE0054
+  var VIP = {
+    PTE0015: { theme: 'alan', name: 'Alan', ms: 8000, cols: ['#ffd27a', '#fff2c4', '#ffffff', '#ffb238', '#b48f55'],
+      IN:  { title: 'THE BOSS IS IN',  wish: 'Welcome back ・ the factory is ready for you', say: 'Attention please! The boss is in the building. Welcome back, Alan!' },
+      OUT: { title: 'THE BOSS IS OUT', wish: 'Thank you for today ・ rest well',              say: 'The boss is leaving the building. Good night, Alan!' } },
+    PTE0054: { theme: 'joe', name: 'Joe', ms: 8000, cols: ['#2fd3ff', '#9fffe0', '#ffffff', '#1b8cff', '#ff5d73', '#c7a6ff'],
+      IN:  { title: 'IN THE HOUSE',      wish: "Let's make some great boxes today", say: "Joe is in the house! Let's make some great boxes today!" },
+      OUT: { title: 'LEFT THE BUILDING', wish: 'See you tomorrow, Joe',             say: 'Joe has left the building! See you tomorrow!' } }
+  };
+  var VIP_TEST = (/[?&]vip=([\w-]+)/.exec(location.search) || [])[1] || '';
+  var FANFARE = { alan: [[392, 140], [523, 140], [659, 140], [784, 420], [659, 160], [784, 700]],
+                  joe:  [[523, 90], [659, 90], [784, 90], [1047, 90], [1319, 90], [1568, 380], [0, 80], [1568, 120], [2093, 520]] };
+  function bdayParty(type, who){
+    var parts = String(who || '').split(' ・ '), name = niceName(String(parts[0]).split(/\s+/)[0]), id = String(parts[1] || '').toUpperCase();
+    var k = type === 'IN' ? 'IN' : 'OUT', o;
+    if (isBday(id)) o = { theme: 'bday', title: 'HAPPY BIRTHDAY', name: name, ms: BDAY_MS, cols: BDAY_COLS,
+      wish: k === 'IN' ? 'Wishing you a wonderful day ・ from all of us at PTE' : 'Enjoy your evening ・ from all of us at PTE',
+      say: 'Happy birthday, ' + name + '! ' + (k === 'IN' ? 'Have a wonderful day!' : 'Enjoy your evening!'), tune: bdaySong };
+    else {
+      var v = VIP[id] || (VIP_TEST && VIP[VIP_TEST.toUpperCase()]);
+      if (!v) return;
+      o = { theme: v.theme, title: v[k].title, name: v.name, ms: v.ms, cols: v.cols, wish: v[k].wish, say: v[k].say,
+            tune: function(){ bdayTune(FANFARE[v.theme]); } };
+    }
+    bdayStop();
+    lastActive = Date.now(); document.body.classList.remove('asleep');   // 平板變暗中也要看得到
+    var el = document.getElementById('bday'), cv = el.querySelector('canvas'), hb = el.querySelector('.hb');
+    hb.innerHTML = '';
+    // 字數多就縮字，平板直放也一行放得下
+    hb.style.fontSize = Math.round(Math.min(92, innerWidth * .09, innerWidth * .9 / (o.title.length * .7))) + 'px';
+    o.title.split('').forEach(function(ch, i){
+      var s = document.createElement('span');
+      if (ch === ' '){ s.className = 'sp'; s.innerHTML = '&nbsp;'; }
+      else s.textContent = ch;
+      s.style.animationDelay = (0.25 + i * 0.07) + 's,' + (1.4 + i * 0.09) + 's';
+      hb.appendChild(s);
+    });
+    el.querySelector('.nm').textContent = o.name + '!';
+    el.querySelector('.wish').textContent = o.wish;
+    var th = o.theme === 'bday' ? '' : ' th-' + o.theme;
+    el.className = th; void el.offsetWidth; el.className = 'on' + th;
+    cv.width = innerWidth; cv.height = innerHeight;
+    cv.getContext('2d').clearRect(0, 0, cv.width, cv.height);
+    fwCols = o.cols;
+    fw = { rockets: [], sparks: [], confetti: [] };
+    var nConf = o.theme === 'bday' ? 160 : 90;
+    for (var i = 0; i < nConf; i++) fw.confetti.push({ x: Math.random() * cv.width, y: -30 - Math.random() * cv.height * .8,
+      vx: (Math.random() - .5) * 1.8, vy: 2 + Math.random() * 3, r: Math.random() * 6, vr: (Math.random() - .5) * .3,
+      w: 7 + Math.random() * 7, h: 4 + Math.random() * 5, c: o.cols[i % o.cols.length] });
+    bdayEnd = Date.now() + o.ms;
+    // 煙火：開場三發、之後每 0.3～0.6 秒一發，結束前 4 秒大結局一次五發
+    [0, 250, 500].forEach(function(t){ bdayLater(launch, t); });
+    (function more(){ if (Date.now() > bdayEnd - 2200) return; launch(); bdayLater(more, 300 + Math.random() * 300); })();
+    bdayLater(function(){ for (var j = 0; j < 5; j++) bdayLater(launch, j * 90); }, o.ms - 4000);
+    bdayLoop = setTimeout(bdayStep, 33);   // 用 setTimeout 不用 requestAnimationFrame：畫面沒在繪製時 rAF 會停
+    bdayLater(function(){ el.className = 'on out' + th; }, o.ms - 700);
+    bdayLater(bdayStop, o.ms);
+    // 聲音：平常的歡迎語音（錄音＋名字）約 2.6 秒念完，接著英文語音，念完彈生日快樂歌或專屬號角
+    bdayLater(function(){ bdaySay(o.say, o.tune); }, 2700);
+  }
+  function bdaySay(text, then){
+    var done = false, next = function(){ if (done) return; done = true; then(); };
+    if (window.speechSynthesis){
+      try {
+        var v = chosenVoice(), u = new SpeechSynthesisUtterance(text);
+        if (v){ u.voice = v; u.lang = v.lang; } else u.lang = 'en-US';
+        u.pitch = Math.min(2, (vset.pitch || 1) + .15); u.rate = vset.rate || .95;
+        u.onend = next; u.onerror = next;
+        bdayUtt = u; speechSynthesis.speak(u);   // 不 cancel：排在名字後面念
+      } catch(e){}
+    }
+    bdayLater(next, 4500);   // 語音沒反應也照樣彈
+  }
+  function bdayTune(notes){
+    bdayUtt = null;
+    var t = 0;
+    notes.forEach(function(n){ bdayLater(function(){ if (n[0]) beep(n[0], n[1] - 30); }, t); t += n[1] + 25; });
+  }
+  function bdaySong(){
+    var G = 392, A = 440, B = 494, C = 523, D = 587, s = 230, l = 460;
+    bdayTune([[G, s], [G, s], [A, l], [G, l], [C, l], [B, l * 1.7], [0, 160], [G, s], [G, s], [A, l], [G, l], [D, l], [C, l * 1.7]]);
+  }
+  function launch(){
+    var cv = document.querySelector('#bday canvas'); if (!cv || !bdayEnd) return;
+    fw.rockets.push({ x: cv.width * (.12 + Math.random() * .76), y: cv.height + 10, vx: (Math.random() - .5) * 2,
+      vy: -(cv.height / 70) * (.75 + Math.random() * .35), c: fwCols[Math.floor(Math.random() * fwCols.length)] });
+  }
+  function explode(r){
+    var n = 90 + Math.floor(Math.random() * 60), ring = Math.random() < .35, c2 = fwCols[Math.floor(Math.random() * fwCols.length)];
+    for (var i = 0; i < n; i++){
+      var a = Math.PI * 2 * i / n + Math.random() * .1, sp = ring ? 5.2 : 1 + Math.random() * 5.5;
+      fw.sparks.push({ x: r.x, y: r.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 55 + Math.random() * 35, max: 90,
+        c: i % 3 ? r.c : c2, tw: Math.random() < .3, s: 1.6 + Math.random() * 1.6 });
+    }
+  }
+  function bdayStep(){
+    var cv = document.querySelector('#bday canvas'), x = cv.getContext('2d'), now = Date.now(), W = cv.width, H = cv.height;
+    // 拖尾：每格把舊畫面擦淡一點
+    x.globalCompositeOperation = 'destination-out'; x.fillStyle = 'rgba(0,0,0,.26)'; x.fillRect(0, 0, W, H);
+    x.globalCompositeOperation = 'lighter';
+    fw.rockets = fw.rockets.filter(function(r){
+      r.x += r.vx; r.y += r.vy; r.vy += .12;
+      x.fillStyle = r.c; x.beginPath(); x.arc(r.x, r.y, 2.6, 0, 7); x.fill();
+      x.fillStyle = 'rgba(255,220,150,.5)'; x.beginPath(); x.arc(r.x - r.vx, r.y - r.vy * 1.5, 1.8, 0, 7); x.fill();
+      if (r.vy >= -1.2){ explode(r); return false; }
+      return true;
+    });
+    fw.sparks = fw.sparks.filter(function(p){
+      p.vx *= .975; p.vy = p.vy * .975 + .06; p.x += p.vx; p.y += p.vy; p.life--;
+      if (p.life <= 0) return false;
+      x.globalAlpha = Math.min(1, p.life / 40) * (p.tw && Math.random() < .4 ? .25 : 1);
+      x.fillStyle = p.c; x.beginPath(); x.arc(p.x, p.y, p.s, 0, 7); x.fill();
+      return true;
+    });
+    x.globalAlpha = 1; x.globalCompositeOperation = 'source-over';
+    fw.confetti.forEach(function(p){
+      p.x += p.vx + Math.sin((p.y + p.r * 40) / 40) * .7; p.y += p.vy; p.r += p.vr;
+      if (p.y > H + 20 && now < bdayEnd - 2500){ p.y = -20; p.x = Math.random() * W; }
+      x.save(); x.translate(p.x, p.y); x.rotate(p.r); x.fillStyle = p.c; x.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); x.restore();
+    });
+    if (now < bdayEnd) bdayLoop = setTimeout(bdayStep, 33);
+  }
+  function bdayStop(){
+    bdayTimers.forEach(clearTimeout); bdayTimers = []; clearTimeout(bdayLoop); bdayEnd = 0;
+    if (bdayUtt && window.speechSynthesis){ try { speechSynthesis.cancel(); } catch(e){} } bdayUtt = null;
+    var el = document.getElementById('bday'); if (!el) return;
+    el.className = ''; var cv = el.querySelector('canvas'); cv.getContext('2d').clearRect(0, 0, cv.width, cv.height);
   }
 
   function doSwitch(rid, offline, queued){
@@ -1638,7 +1912,7 @@ body.nokey #setupMsg{display:block}
     post({ action: 'sync' }).then(function(r){
       if (!r.ok && r.code === 'KEY'){ document.body.classList.add('nokey'); return; }
       net(true);
-      if (r.ok && r.cards) lsSet(SYNC_STORE, { cards: r.cards, last: r.last || {}, at: Date.now() });
+      if (r.ok && r.cards) lsSet(SYNC_STORE, { cards: r.cards, last: r.last || {}, at: Date.now(), bday: r.bday || null });   // bday：今天生日的工號（10/23 彩蛋）
       if (r.ok){ faceCloudSync(r.faceVer || ''); if (r.faceCfg) faceCfgApply(r.faceCfg); }
       flush();
     }).catch(function(){ net(false); });
@@ -1658,7 +1932,7 @@ body.nokey #setupMsg{display:block}
   // 自動更新（Alan 10/16）：每 5 分鐘、以及 App 切回前景時，看 GitHub 上的版本號跟這頁一不一樣；
   // 不一樣就等沒人在打卡（沒在刷卡、沒在存、鏡頭關著、結果訊息已顯示超過 10 秒）再重新整理。
   // 斷網佇列存在平板裡，重新整理不會掉資料。每次上傳新版要把 APP_VER 改掉，平板才會換。
-  var APP_VER = '2026-10-23-1';
+  var APP_VER = '2026-10-23-2';
   var newVer = '';
   // ?setup 顯示目前版本，發現新版還沒換時也寫出來，一眼確認平板有沒有更新
   document.getElementById('appVer').textContent = APP_VER;
