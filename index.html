@@ -318,7 +318,7 @@ body.nokey #setupMsg{display:block}
     <div class="stat"><b id="fOk">0</b><small>Match</small></div>
     <div class="stat warn"><b id="fBad">0</b><small>Not match</small></div>
     <div class="stat"><b id="fNone">0</b><small>Unclear / no face</small></div>
-    <div class="stat"><b id="fSelf">-</b><small>Self-check: face alone right (card-verified)</small></div>
+    <div class="stat"><b id="fSelf">-</b><small>Self-check: closest face is the card holder</small></div>
     <div class="stat"><b id="fMs">-</b><small>Avg time (s)</small></div>
   </div>
   <div class="tablewrap">
@@ -1216,14 +1216,21 @@ body.nokey #setupMsg{display:block}
         if (best){ o.od = +best.d.toFixed(3); o.on = best.n; }
         // 標記只在證據夠強時才說「不像本人」：
         // Match＝本人最像；Not match, looks like＝刷臉規則會很有把握地認成別人；Not match＝離本人很遠（> 0.6）；其他都寫 Unclear
+        // 10/23：「不像」兩種都要臉拍得清楚（偵測分數 ≥ 0.7、臉高 ≥ 15%）才說；10/22 Vusi 卡片整張擋住臉卻寫 Not match (0.72)
+        var clear = r.detection.score >= 0.7 && r.detection.box.height >= c.height * 0.15;
+        o.clear = clear ? 1 : 0;
         if (o.d <= F.thr && (!best || best.d >= o.d)) o.res = 'MATCH';
-        else if (best && best.d <= FACE_ID_THR && o.d - best.d >= FACE_ID_GAP) o.res = 'OTHER';
-        else if (o.d > 0.6 && (!best || best.d > 0.5)) o.res = 'NOMATCH';
+        else if (clear && best && best.d <= FACE_ID_THR && o.d - best.d >= FACE_ID_GAP) o.res = 'OTHER';
+        else if (clear && o.d > 0.6 && (!best || best.d > 0.5)) o.res = 'NOMATCH';
+        else if (!clear && o.d > 0.6) o.res = 'NOFACE';   // 臉被擋或太糊，只看到一部分
         else o.res = 'UNCLEAR';
-        // 自我查核：如果只靠臉，會不會認對人（認對／認錯／沒把握），?setup 顯示準確率
+        // 自我查核（10/23 改）：最像的是不是卡片上的本人。right＝最像的是本人（≤ 0.5）；
+        // wrong＝刷臉規則會很有把握認成別人（真的會打錯人，要是 0）；unsure＝其他（臉不清楚、別人稍微比較像但沒把握）。
+        // 原本要求單張就過刷臉的嚴格門檻，10/22 48 筆有 46 筆 unsure，看不出好壞
         o.top1 = !best || o.d < best.d;
-        o.sid = o.top1 && o.d <= FACE_ID_THR && (!best || best.d - o.d >= FACE_ID_GAP) ? 'RIGHT'
-              : (!o.top1 && best.d <= FACE_ID_THR && o.d - best.d >= FACE_ID_GAP ? 'WRONG' : 'UNSURE');
+        if (o.top1 && o.d <= F.thr) o.sid = 'RIGHT';
+        else if (!o.top1 && best.d <= FACE_ID_THR && o.d - best.d >= FACE_ID_GAP) o.sid = 'WRONG';
+        else o.sid = 'UNSURE';
         o.img = faceThumb(c, r.detection.box);
         // 自我訓練：有卡就確定是本人。臉夠清楚（偵測分數 ≥ 0.7、臉佔畫面高 ≥ 15%）就學進去，連現在認不太出來的也學，
         // 這樣模型容易混淆的人（例如常被認成 Christian 的幾位）會越來越準
@@ -1651,7 +1658,7 @@ body.nokey #setupMsg{display:block}
   // 自動更新（Alan 10/16）：每 5 分鐘、以及 App 切回前景時，看 GitHub 上的版本號跟這頁一不一樣；
   // 不一樣就等沒人在打卡（沒在刷卡、沒在存、鏡頭關著、結果訊息已顯示超過 10 秒）再重新整理。
   // 斷網佇列存在平板裡，重新整理不會掉資料。每次上傳新版要把 APP_VER 改掉，平板才會換。
-  var APP_VER = '2026-10-22-1';
+  var APP_VER = '2026-10-23-1';
   var newVer = '';
   // ?setup 顯示目前版本，發現新版還沒換時也寫出來，一眼確認平板有沒有更新
   document.getElementById('appVer').textContent = APP_VER;
