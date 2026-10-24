@@ -245,23 +245,44 @@ body.nokey #setupMsg{display:block}
 @keyframes bdWave{50%{translate:0 -8px}}
 @keyframes bdName{0%{opacity:0;transform:scale(2.2)}100%{opacity:1;transform:none}}
 @keyframes bdFade{to{opacity:1}}
-/* 10/23 Alan：Alan（PTE0015）、Joe（PTE0054）每次打卡都有專屬彩蛋。Alan＝金色皇冠＋聚光燈；Joe＝霓虹火箭 */
+/* 10/23 Alan：Alan（PTE0015）、Joe（PTE0054）每次打卡都有專屬彩蛋。Alan＝金色皇冠＋聚光燈；Joe＝霓虹火箭
+   10/24 Alan：金色皇冠轉給 Ann 姐（PTE0005）；Alan 改閃電；時分秒三組一樣（11:11:11、05:05:05）＝隱藏彩蛋流星許願 */
 #bday .emb{display:none;width:min(40vw,230px);height:auto;overflow:visible}
-#bday.th-alan .cake,#bday.th-joe .cake{display:none}
-#bday.th-alan .e-alan,#bday.th-joe .e-joe{display:block}
+#bday.th-ann .cake,#bday.th-joe .cake,#bday.th-gm .cake,#bday.th-lucky .cake{display:none}
+#bday.th-ann .e-ann,#bday.th-joe .e-joe,#bday.th-gm .e-gm,#bday.th-lucky .e-lucky{display:block}
+#bday .flash{position:absolute;inset:0;background:#e9e4ff;opacity:0}
+#bday.th-gm.on .flash{animation:bdFlash 2.6s linear .1s both}
+#bday.th-gm.on .e-gm{animation:bdBolt .45s cubic-bezier(.2,1.6,.4,1) .15s both,bdZap 1.8s steps(1) 1s infinite}
+#bday.th-gm .e-gm{filter:drop-shadow(0 0 22px rgba(160,130,255,.9)) drop-shadow(0 0 50px rgba(47,211,255,.6))}
+#bday.th-gm .hb span{background:linear-gradient(180deg,#ffffff 0%,#e3dbff 35%,#a58bff 70%,#5b46d9 100%);-webkit-background-clip:text;background-clip:text;
+  filter:drop-shadow(0 3px 0 rgba(30,20,80,.7)) drop-shadow(0 0 22px rgba(165,139,255,.8))}
+#bday.th-gm .nm{text-shadow:0 0 26px rgba(165,139,255,.9)}
+#bday.th-gm .wish{color:#d9d0ff}
+#bday.th-lucky.on .e-lucky{animation:bdStar .9s cubic-bezier(.2,1.4,.4,1) .1s both}
+#bday.th-lucky .e-lucky .tw{transform-box:fill-box;transform-origin:50% 50%;animation:bdTwinkle .5s ease-in-out infinite alternate}
+#bday.th-lucky .e-lucky{filter:drop-shadow(0 0 26px rgba(255,214,120,.8))}
+#bday.th-lucky .beams{display:block;animation:bdSpin 10s linear infinite,bdFade .8s ease-out .2s forwards;
+  background:conic-gradient(from 0deg,transparent 0 10deg,rgba(255,214,120,.18) 10deg 20deg,transparent 20deg 50deg,rgba(95,211,148,.16) 50deg 60deg,transparent 60deg 100deg,rgba(255,214,120,.18) 100deg 110deg,transparent 110deg 140deg,rgba(95,211,148,.16) 140deg 150deg,transparent 150deg 190deg,rgba(255,214,120,.18) 190deg 200deg,transparent 200deg 230deg,rgba(95,211,148,.16) 230deg 240deg,transparent 240deg 280deg,rgba(255,214,120,.18) 280deg 290deg,transparent 290deg 320deg,rgba(95,211,148,.16) 320deg 330deg,transparent 330deg)}
+#bday.th-lucky .nm{text-shadow:0 0 26px rgba(255,214,120,.85)}
+@keyframes bdFlash{0%{opacity:0}3%{opacity:.85}7%{opacity:0}11%{opacity:.6}15%{opacity:0}100%{opacity:0}}
+@keyframes bdBolt{0%{opacity:0;transform:translateY(-160px) scale(1.6)}100%{opacity:1;transform:none}}
+@keyframes bdZap{0%{opacity:1}6%{opacity:.35}10%{opacity:1}14%{opacity:.5}18%{opacity:1}}
+@keyframes bdStar{0%{opacity:0;transform:translate(-55vw,-30vh) rotate(-30deg) scale(.4)}100%{opacity:1;transform:none}}
+@keyframes bdTwinkle{0%{transform:scale(.6);opacity:.4}100%{transform:scale(1.15);opacity:1}}
+@media (prefers-reduced-motion:reduce){#bday.th-gm.on .flash,#bday.th-gm.on .e-gm,#bday.th-lucky.on .e-lucky{animation:none}}
 #bday .beams{display:none;position:absolute;left:50%;top:-10%;width:160vmax;height:160vmax;margin-left:-80vmax;
   background:conic-gradient(from 0deg,transparent 0 8deg,rgba(255,214,120,.16) 8deg 16deg,transparent 16deg 52deg,rgba(255,214,120,.12) 52deg 60deg,transparent 60deg 112deg,rgba(255,214,120,.16) 112deg 120deg,transparent 120deg 172deg,rgba(255,214,120,.12) 172deg 180deg,transparent 180deg 232deg,rgba(255,214,120,.16) 232deg 240deg,transparent 240deg 292deg,rgba(255,214,120,.12) 292deg 300deg,transparent 300deg);
   border-radius:50%;animation:bdSpin 14s linear infinite;opacity:0}
-#bday.th-alan .beams{display:block;animation:bdSpin 14s linear infinite,bdFade .8s ease-out .2s forwards}
-#bday.th-alan.on .e-alan{animation:bdCrown 1s cubic-bezier(.2,1.5,.4,1) .15s both}
-#bday .e-alan .shine{animation:bdShine 2.2s ease-in-out 1.2s infinite}
+#bday.th-ann .beams{display:block;animation:bdSpin 14s linear infinite,bdFade .8s ease-out .2s forwards}
+#bday.th-ann.on .e-ann{animation:bdCrown 1s cubic-bezier(.2,1.5,.4,1) .15s both}
+#bday .e-ann .shine{animation:bdShine 2.2s ease-in-out 1.2s infinite}
 #bday.th-joe.on .e-joe{animation:bdRocket 1.1s cubic-bezier(.2,1.3,.4,1) .1s both,bdShake .12s linear 1.2s infinite alternate}
 #bday .e-joe .fire{transform-box:fill-box;transform-origin:50% 0;animation:bdFire .1s linear infinite alternate}
 #bday.th-joe .hb span{background:linear-gradient(180deg,#f2fffb 0%,#9fffe0 40%,#2fd3ff 75%,#1b8cff 100%);-webkit-background-clip:text;background-clip:text;
   filter:drop-shadow(0 3px 0 rgba(10,40,80,.7)) drop-shadow(0 0 20px rgba(47,211,255,.75))}
 #bday.th-joe .nm{text-shadow:0 0 24px rgba(47,211,255,.8)}
 #bday.th-joe .wish{color:#bdf3ff}
-#bday.th-alan .nm{text-shadow:0 0 26px rgba(255,214,120,.85)}
+#bday.th-ann .nm{text-shadow:0 0 26px rgba(255,214,120,.85)}
 @keyframes bdSpin{to{transform:rotate(360deg)}}
 @keyframes bdCrown{0%{opacity:0;transform:translateY(-220px) rotate(-25deg) scale(.5)}100%{opacity:1;transform:none}}
 @keyframes bdShine{0%,60%{transform:translateX(-140px)}100%{transform:translateX(160px)}}
@@ -338,7 +359,7 @@ body.nokey #setupMsg{display:block}
     <div id="flash"></div>
     <canvas id="faceOv"></canvas>
   </div>
-  <div id="bday"><canvas></canvas>
+  <div id="bday"><canvas></canvas><div class="flash"></div>
     <div class="beams"></div>
     <div class="stage">
     <svg class="cake" viewBox="0 0 240 232" aria-hidden="true">
@@ -376,7 +397,7 @@ body.nokey #setupMsg{display:block}
         <path class="flame" style="animation-delay:2.02s,2.02s" d="M152 44 C146 36 150 30 152 22 C154 30 158 36 152 44 Z" fill="#ffb238"/>
       </g>
     </svg>
-    <svg class="emb e-alan" viewBox="0 0 240 170" aria-hidden="true">
+    <svg class="emb e-ann" viewBox="0 0 240 170" aria-hidden="true">
       <defs>
         <linearGradient id="vipGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff2c4"/><stop offset=".45" stop-color="#ffd27a"/><stop offset="1" stop-color="#b48f55"/></linearGradient>
         <clipPath id="vipCrownClip"><path d="M20 130 L8 40 L66 88 L120 14 L174 88 L232 40 L220 130 Z"/></clipPath>
@@ -399,6 +420,28 @@ body.nokey #setupMsg{display:block}
       <circle cx="100" cy="100" r="21" fill="#2fd3ff" stroke="#0c4a7a" stroke-width="4"/>
       <circle cx="93" cy="93" r="6" fill="#e9fbff"/>
       <text x="100" y="172" text-anchor="middle" font-size="20" font-weight="900" fill="#0c4a7a" font-family="Segoe UI,Arial,sans-serif">JOE</text>
+    </svg>
+    <svg class="emb e-gm" viewBox="0 0 200 240" aria-hidden="true">
+      <defs><linearGradient id="vipBolt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".5" stop-color="#c9bcff"/><stop offset="1" stop-color="#6f5cf0"/></linearGradient></defs>
+      <path d="M118 6 L40 132 H96 L74 234 L162 96 H106 L134 6 Z" fill="url(#vipBolt)" stroke="#2a1f70" stroke-width="4" stroke-linejoin="round"/>
+      <path d="M118 18 L58 122 H104" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity=".8"/>
+      <text x="118" y="146" text-anchor="middle" font-size="22" font-weight="900" fill="#2a1f70" font-family="Segoe UI,Arial,sans-serif">GM</text>
+    </svg>
+    <svg class="emb e-lucky" viewBox="0 0 240 200" aria-hidden="true">
+      <defs><linearGradient id="luckyGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff2c4"/><stop offset=".45" stop-color="#ffd27a"/><stop offset="1" stop-color="#b48f55"/></linearGradient></defs>
+      <rect x="40" y="6" width="140" height="34" rx="10" fill="#123a2a" stroke="#7a5a2a" stroke-width="3"/>
+      <text x="110" y="31" text-anchor="middle" font-size="20" font-weight="900" letter-spacing="2" fill="#ffd27a" font-family="Segoe UI,Arial,sans-serif">LUCKY</text>
+      <rect x="14" y="40" width="192" height="150" rx="22" fill="url(#luckyGold)" stroke="#7a5a2a" stroke-width="3"/>
+      <rect x="32" y="62" width="156" height="76" rx="10" fill="#fffdf4" stroke="#7a5a2a" stroke-width="3"/>
+      <line x1="84" y1="62" x2="84" y2="138" stroke="#c9a94a" stroke-width="2"/><line x1="136" y1="62" x2="136" y2="138" stroke="#c9a94a" stroke-width="2"/>
+      <g font-size="40" font-weight="900" fill="#1f7a4a" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif">
+        <text class="rl" x="58" y="115">00</text><text class="rl" x="110" y="115">00</text><text class="rl" x="162" y="115">00</text>
+      </g>
+      <rect x="62" y="156" width="96" height="16" rx="8" fill="#5a3f18"/>
+      <circle class="tw" cx="26" cy="54" r="4" fill="#fff"/><circle class="tw" style="animation-delay:.35s" cx="194" cy="54" r="4" fill="#fff"/>
+      <circle class="tw" style="animation-delay:.7s" cx="26" cy="178" r="4" fill="#fff"/><circle class="tw" style="animation-delay:1.05s" cx="194" cy="178" r="4" fill="#fff"/>
+      <rect x="206" y="80" width="10" height="44" rx="4" fill="#b48f55" stroke="#7a5a2a" stroke-width="2"/>
+      <circle cx="226" cy="74" r="11" fill="#ff5d73" stroke="#7a5a2a" stroke-width="3"/>
     </svg>
     <div class="hb"></div><div class="nm"></div><div class="wish"></div>
   </div></div>
@@ -1037,7 +1080,7 @@ body.nokey #setupMsg{display:block}
       okSound(type, String(who).split(' ・ ')[0]);
       show(type === 'IN' ? 'in' : 'out', nm + ' ✔', who, tm);
     }
-    bdayParty(type, who);
+    bdayParty(type, who, time);
   }
 
   /* ---------- 生日彩蛋（Alan 10/23：蛋糕動畫、煙火浮誇一點、生日快樂大字、英文語音）----------
@@ -1057,23 +1100,41 @@ body.nokey #setupMsg{display:block}
   }
   function bdayLater(fn, ms){ bdayTimers.push(setTimeout(fn, ms)); }
   // 10/23 Alan：Alan、Joe 每次打卡都有專屬彩蛋（生日優先）。測試：網址加 ?vip=PTE0015 或 ?vip=PTE0054
+  // 10/24 Alan：金色皇冠給 Ann 姐（PTE0005）；Alan 改閃電。測試 ?vip=PTE0005
   var VIP = {
-    PTE0015: { theme: 'alan', name: 'Alan', ms: 8000, cols: ['#ffd27a', '#fff2c4', '#ffffff', '#ffb238', '#b48f55'],
-      IN:  { title: 'THE BOSS IS IN',  wish: 'Welcome back ・ the factory is ready for you', say: 'Attention please! The boss is in the building. Welcome back, Alan!' },
-      OUT: { title: 'THE BOSS IS OUT', wish: 'Thank you for today ・ rest well',              say: 'The boss is leaving the building. Good night, Alan!' } },
+    PTE0005: { theme: 'ann', name: 'Ms Ann', ms: 8000, cols: ['#ffd27a', '#fff2c4', '#ffffff', '#ffb238', '#b48f55'],
+      IN:  { title: 'THE BOSS IS IN',  wish: 'Welcome back ・ the factory is ready for you', say: 'Attention please! The boss is in the building. Welcome back, Ms Ann!' },
+      OUT: { title: 'THE BOSS IS OUT', wish: 'Thank you for today ・ rest well',              say: 'The boss is leaving the building. Good night, Ms Ann!' } },
+    PTE0015: { theme: 'gm', name: 'Alan', ms: 8000, cols: ['#a58bff', '#e3dbff', '#ffffff', '#2fd3ff', '#6f5cf0'],
+      IN:  { title: 'GM ON DUTY',  wish: "Full power ・ let's make today count", say: 'Power up! General Manager Alan is on duty!' },
+      OUT: { title: 'GM OFF DUTY', wish: 'Great work today ・ recharge well',     say: 'General Manager Alan is signing off. Recharge well!' } },
     PTE0054: { theme: 'joe', name: 'Joe', ms: 8000, cols: ['#2fd3ff', '#9fffe0', '#ffffff', '#1b8cff', '#ff5d73', '#c7a6ff'],
       IN:  { title: 'IN THE HOUSE',      wish: "Let's make some great boxes today", say: "Joe is in the house! Let's make some great boxes today!" },
       OUT: { title: 'LEFT THE BUILDING', wish: 'See you tomorrow, Joe',             say: 'Joe has left the building! See you tomorrow!' } }
   };
   var VIP_TEST = (/[?&]vip=([\w-]+)/.exec(location.search) || [])[1] || '';
-  var FANFARE = { alan: [[392, 140], [523, 140], [659, 140], [784, 420], [659, 160], [784, 700]],
+  // 10/24 Alan 隱藏彩蛋：打卡時間時分秒三組一樣（00:00:00、05:05:05、11:11:11…一天 24 秒），誰打都觸發；生日優先、比 VIP 優先。測試 ?lucky=1
+  var LUCKY_TEST = /[?&]lucky=1/.test(location.search);
+  var LUCKY_COLS = ['#fff1a8', '#9ff0c4', '#ffffff', '#ffd27a', '#7fc8ff'];
+  function luckyTime(time){
+    var t = /^\d\d:\d\d:\d\d$/.test(String(time)) ? String(time) : hms(new Date());
+    if (LUCKY_TEST) return t.slice(0, 2) + ':' + t.slice(0, 2) + ':' + t.slice(0, 2);
+    return /^(\d\d):\1:\1$/.test(t) ? t : '';
+  }
+  var FANFARE = { ann: [[392, 140], [523, 140], [659, 140], [784, 420], [659, 160], [784, 700]],
+                  gm:  [[196, 70], [0, 40], [196, 70], [392, 120], [587, 120], [784, 160], [0, 60], [1175, 520]],
+                  lucky: [[1319, 110], [1568, 110], [1760, 110], [2093, 110], [1760, 110], [2093, 160], [2637, 600]],
                   joe:  [[523, 90], [659, 90], [784, 90], [1047, 90], [1319, 90], [1568, 380], [0, 80], [1568, 120], [2093, 520]] };
-  function bdayParty(type, who){
+  function bdayParty(type, who, time){
     var parts = String(who || '').split(' ・ '), name = niceName(String(parts[0]).split(/\s+/)[0]), id = String(parts[1] || '').toUpperCase();
-    var k = type === 'IN' ? 'IN' : 'OUT', o;
+    var k = type === 'IN' ? 'IN' : 'OUT', o, lucky = luckyTime(time);
     if (isBday(id)) o = { theme: 'bday', title: 'HAPPY BIRTHDAY', name: name, ms: BDAY_MS, cols: BDAY_COLS,
       wish: k === 'IN' ? 'Wishing you a wonderful day ・ from all of us at PTE' : 'Enjoy your evening ・ from all of us at PTE',
       say: 'Happy birthday, ' + name + '! ' + (k === 'IN' ? 'Have a wonderful day!' : 'Enjoy your evening!'), tune: bdaySong };
+    else if (lucky) o = { theme: 'lucky', title: 'JACKPOT!', name: name, ms: 9000, cols: LUCKY_COLS,
+      wish: 'Lucky time ' + lucky + ' ・ make a wish!',
+      say: (function(n){ return 'Wow! ' + n + ', ' + n + ', ' + n + '! Lucky time, ' + name + '! Make a wish!'; })(Number(lucky.slice(0, 2)) || 'zero'),
+      tune: function(){ bdayTune(FANFARE.lucky); } };
     else {
       var v = VIP[id] || (VIP_TEST && VIP[VIP_TEST.toUpperCase()]);
       if (!v) return;
@@ -1106,6 +1167,17 @@ body.nokey #setupMsg{display:block}
       vx: (Math.random() - .5) * 1.8, vy: 2 + Math.random() * 3, r: Math.random() * 6, vr: (Math.random() - .5) * .3,
       w: 7 + Math.random() * 7, h: 4 + Math.random() * 5, c: o.cols[i % o.cols.length] });
     bdayEnd = Date.now() + o.ms;
+    // 隱藏彩蛋：拉霸機三格亂跳，左到右依序停在 時／分／秒（三格一樣）
+    if (o.theme === 'lucky'){
+      var reels = el.querySelectorAll('.e-lucky .rl'), fin = lucky.slice(0, 2), spins = 0;
+      (function roll(){
+        spins++;
+        for (var r = 0; r < reels.length; r++)
+          reels[r].textContent = spins > 14 + r * 6 ? fin : pad(Math.floor(Math.random() * 60));
+        if (spins <= 14 + (reels.length - 1) * 6) bdayLater(roll, 70);
+        else beep(1568, 120);
+      })();
+    }
     // 煙火：開場三發、之後每 0.3～0.6 秒一發，結束前 4 秒大結局一次五發
     [0, 250, 500].forEach(function(t){ bdayLater(launch, t); });
     (function more(){ if (Date.now() > bdayEnd - 2200) return; launch(); bdayLater(more, 300 + Math.random() * 300); })();
@@ -1932,7 +2004,7 @@ body.nokey #setupMsg{display:block}
   // 自動更新（Alan 10/16）：每 5 分鐘、以及 App 切回前景時，看 GitHub 上的版本號跟這頁一不一樣；
   // 不一樣就等沒人在打卡（沒在刷卡、沒在存、鏡頭關著、結果訊息已顯示超過 10 秒）再重新整理。
   // 斷網佇列存在平板裡，重新整理不會掉資料。每次上傳新版要把 APP_VER 改掉，平板才會換。
-  var APP_VER = '2026-10-23-2';
+  var APP_VER = '2026-10-24-1';
   var newVer = '';
   // ?setup 顯示目前版本，發現新版還沒換時也寫出來，一眼確認平板有沒有更新
   document.getElementById('appVer').textContent = APP_VER;
