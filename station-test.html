@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b2a5b">
+<title>PTE Station Output (TEST)</title>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<style>
+/* 站別報工外框 測試版（2026-10-24 Alan：GitHub 外框包現有報工頁，刷卡或刷臉確認是誰，PIN 留著）
+   報工頁開不了鏡頭（Google 網頁的限制），所以這一頁負責鏡頭：報工頁按開工／報工時傳訊息過來，這裡讀員工卡或臉，
+   把卡片代碼／臉部特徵交回報工頁，由報工頁送後端驗證。這一頁不存任何人的資料。 */
+:root{--navy:#0b2a5b;--ink:#1a2233;--sub:#5f6b7d;--line:#e2e6ec;--ok:#127a3e;--bad:#c62828;--warn:#9a5b00;--acc:#1f6feb}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#111a26;font-family:-apple-system,"Segoe UI","Microsoft JhengHei","PingFang TC",system-ui,sans-serif;overflow:hidden}
+#test{position:fixed;left:0;right:0;top:0;height:24px;z-index:5;background:#b54708;color:#fff;font-size:12px;text-align:center;line-height:24px}
+#app{position:fixed;left:0;right:0;bottom:0;top:24px;width:100%;height:calc(100% - 24px);border:0;background:#111a26}
+#ov{position:fixed;inset:0;z-index:20;background:rgba(5,12,24,.62);display:none;align-items:center;justify-content:center;padding:14px}
+#ov.on{display:flex}
+.box{background:#fff;color:var(--ink);border-radius:20px;width:100%;max-width:520px;max-height:96vh;overflow:auto;box-shadow:0 24px 70px rgba(0,0,0,.45)}
+.hd{padding:16px 20px 8px}
+.hd b{display:block;font-size:20px}
+.hd span{font-size:13px;color:var(--sub)}
+.tabs{display:flex;gap:6px;padding:0 20px 10px}
+.tabs button{flex:1;border:1.5px solid var(--line);background:#fff;border-radius:12px;padding:10px 4px;font:700 15px inherit;font-family:inherit}
+.tabs button small{display:block;font-weight:400;font-size:11.5px;color:var(--sub)}
+.tabs button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.tabs button.on small{color:#c9d2e0}
+.cam{position:relative;margin:0 20px;background:#0a1628;border-radius:16px;overflow:hidden;aspect-ratio:4/3}
+.cam video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.cam .frame{position:absolute;left:50%;top:50%;width:46%;aspect-ratio:1;transform:translate(-50%,-50%);border:3px solid #ffd27a;border-radius:16px;box-shadow:0 0 0 999px rgba(10,22,40,.3)}
+.cam .oval{position:absolute;left:50%;top:48%;width:46%;height:72%;transform:translate(-50%,-50%);border:3px dashed #c7a6ff;border-radius:50%;display:none}
+.cam.face .frame{display:none}.cam.face .oval{display:block}
+.cam .cd{position:absolute;right:10px;top:10px;background:rgba(0,0,0,.55);color:#fff;border-radius:999px;padding:3px 10px;font-size:13px;font-weight:700}
+.cam .done{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(18,122,62,.86);color:#fff;font-size:26px;font-weight:800;text-align:center;padding:16px}
+.cam .done.on{display:flex}
+.st{margin:10px 20px 0;min-height:44px;font-size:15px;font-weight:600;line-height:1.4}
+.st.ok{color:var(--ok)}.st.bad{color:var(--bad)}.st.warn{color:var(--warn)}
+.ft{display:flex;gap:10px;justify-content:flex-end;padding:10px 20px 18px}
+.ft button{border:0;border-radius:12px;padding:12px 20px;font:700 15px inherit;font-family:inherit;background:#eef1f5}
+</style>
+</head>
+<body>
+<div id="test">測試版 TEST · 刷卡／刷臉報工 · 正式網址不受影響</div>
+<iframe id="app" allow="clipboard-write"></iframe>
+<div id="ov"><div class="box">
+  <div class="hd"><b id="t">確認是誰 Who is this?</b><span id="sub"></span></div>
+  <div class="tabs">
+    <button data-m="card" class="on">🪪 刷卡<small>Card</small></button>
+    <button data-m="face">🙂 刷臉<small>Face</small></button>
+    <button data-m="pin">🔢 PIN<small>PIN</small></button>
+  </div>
+  <div class="cam" id="cam"><video id="v" playsinline muted></video><div class="frame"></div><div class="oval"></div><div class="cd" id="cd"></div><div class="done" id="done"></div></div>
+  <div class="st" id="st"></div>
+  <div class="ft"><button id="cancel">取消 Cancel</button></div>
+</div></div>
+<script>
+(function(){
+  // 測試部署（只給 Alan 試；正式網址的報工頁不受影響）。本機測試可用 ?src= 換掉
+  var STN_URL = 'https://script.google.com/a/macros/papertecheswatini.net/s/AKfycbyt6dVDP9MyxmgnG1xxU3LwtM8lkv-7cGQ8jnzJq3tyzmDyfTBZvW7Goqtlpm9c-q7l/exec';
+  var m0 = /[?&]src=([^&]+)/.exec(location.search);
+  if (m0) STN_URL = decodeURIComponent(m0[1]);
+  var CARD_RE = /^PT[EC]\d{4}-[A-Z0-9]{3,8}$/;
+  var CARD_MS = 12000, FACE_MS = 15000;
+  var FACE_LIB = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/dist/face-api.js';
+  var FACE_MODELS = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/model/';
+  function $(i){ return document.getElementById(i); }
+  $('app').src = STN_URL + (STN_URL.indexOf('?') < 0 ? '?' : '&') + 'p=station&kiosk=1&embed=1';
+
+  var WHO = null;          // { src, org }：等著確認的報工頁
+  var mode = 'card', stream = null, loopT = 0, cdT = 0, endAt = 0, waiting = false, badCode = '', badAt = 0, busyFace = false;
+  var video = $('v'), cvs = document.createElement('canvas'), cx = cvs.getContext('2d', { willReadFrequently: true });
+  var BD = null; try { if (window.BarcodeDetector) BD = new BarcodeDetector({ formats: ['qr_code'] }); } catch (e) { BD = null; }
+
+  function st(t, c){ $('st').textContent = t || ''; $('st').className = 'st ' + (c || ''); }
+  function tell(o){ if (WHO) try { WHO.src.postMessage(o, WHO.org); } catch (e) {} }
+
+  // 報工頁傳來的訊息
+  window.addEventListener('message', function(e){
+    var m = e.data || {};
+    if (!/^https:\/\/[\w.-]+\.googleusercontent\.com$/.test(e.origin) && !(m0 && /^http:\/\/localhost:\d+$/.test(e.origin))) return;   // 本機測試（?src=）才收 localhost
+    if (m.pte === 'stn-who'){
+      WHO = { src: e.source, org: e.origin };
+      $('t').textContent = (m.act || '') + '：確認是誰 Who is this?';
+      $('sub').textContent = [m.stName, m.so ? 'SO ' + m.so : ''].filter(Boolean).join(' · ');
+      $('done').className = 'done';
+      $('ov').classList.add('on');
+      setMode('card');
+    } else if (m.pte === 'stn-id-ok'){
+      waiting = false; stopLoop();
+      $('done').textContent = '✔ ' + (m.name || ''); $('done').className = 'done on';
+      st('✔ ' + (m.name || '') + (m.wid ? '（' + m.wid + '）' : '') + (m.d ? ' · ' + m.d : ''), 'ok');
+      setTimeout(closeOv, 800);
+    } else if (m.pte === 'stn-id-bad'){
+      waiting = false;
+      st('✖ ' + (m.message || '失敗 Failed'), 'bad');
+      if (mode === 'card'){ badAt = Date.now(); }
+      if (Date.now() < endAt) loopT = setTimeout(mode === 'face' ? faceLoop : scan, mode === 'face' ? 600 : 1200);
+    }
+  });
+
+  function closeOv(){ stopAll(); $('ov').classList.remove('on'); WHO = null; }
+  $('cancel').onclick = function(){ tell({ pte: 'stn-id', kind: 'cancel' }); closeOv(); };
+  [].forEach.call(document.querySelectorAll('.tabs button'), function(b){ b.onclick = function(){ setMode(b.getAttribute('data-m')); }; });
+
+  function setMode(m){
+    mode = m; waiting = false; stopLoop();
+    [].forEach.call(document.querySelectorAll('.tabs button'), function(b){ b.classList.toggle('on', b.getAttribute('data-m') === m); });
+    if (m === 'pin'){ tell({ pte: 'stn-id', kind: 'pin' }); closeOv(); return; }
+    $('cam').className = 'cam' + (m === 'face' ? ' face' : '');
+    st(m === 'card' ? '把員工卡 QR 對準黃框 · Hold your card QR in the yellow box' : '看著鏡頭，靠近一點 · Look at the camera', '');
+    endAt = Date.now() + (m === 'card' ? CARD_MS : FACE_MS);
+    tick(); cdT = setInterval(tick, 250);
+    camOn().then(function(){
+      if (mode !== m) return;
+      if (m === 'card') scan(); else faceStart();
+    }).catch(function(){ st('✖ 打不開鏡頭，請改用 PIN · Camera not available, use PIN', 'bad'); });
+  }
+  function tick(){
+    var s = Math.max(0, Math.ceil((endAt - Date.now()) / 1000));
+    $('cd').textContent = s ? s + 's' : '';
+    if (!s && !waiting){ stopLoop(); st(mode === 'card' ? '✖ 沒讀到卡：拿近一點、避開反光，或改用刷臉／PIN · No card read' : '✖ 認不出來，請改用刷卡或 PIN · Face not recognised', 'bad'); }
+  }
+  function camOn(){
+    if (stream) return Promise.resolve();
+    return navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false }).then(function(s){
+      stream = s; video.srcObject = s; return video.play();
+    });
+  }
+  function stopLoop(){ clearTimeout(loopT); clearInterval(cdT); $('cd').textContent = ''; }
+  function stopAll(){ stopLoop(); if (stream){ stream.getTracks().forEach(function(t){ t.stop(); }); stream = null; } }
+
+  // ---- 刷卡：讀 QR ----
+  var nScan = 0;
+  function scan(){
+    if (mode !== 'card' || waiting || Date.now() > endAt || !stream) return;
+    var next = function(){ loopT = setTimeout(scan, 90); };
+    if (!video.videoWidth) return next();
+    var got = function(code){
+      code = String(code || '').trim().toUpperCase();
+      if (!code) return next();
+      if (!CARD_RE.test(code)){ st('這不是員工卡 · Not a staff card', 'warn'); return next(); }
+      if (code === badCode && Date.now() - badAt < 3000) return next();
+      badCode = code; waiting = true; st('確認中… Checking…', '');
+      tell({ pte: 'stn-id', kind: 'card', code: code });
+    };
+    if (BD && (++nScan % 4)){ BD.detect(video).then(function(a){ got(a && a[0] && a[0].rawValue); }, function(){ BD = null; next(); }); return; }
+    var w = video.videoWidth, h = video.videoHeight, k = Math.min(1, 640 / w);
+    cvs.width = Math.round(w * k); cvs.height = Math.round(h * k);
+    cx.drawImage(video, 0, 0, cvs.width, cvs.height);
+    var r = window.jsQR ? jsQR(cx.getImageData(0, 0, cvs.width, cvs.height).data, cvs.width, cvs.height, { inversionAttempts: 'attemptBoth' }) : null;
+    got(r && r.data);
+  }
+
+  // ---- 刷臉：跟打卡平板同一套模型與算法（tinyFaceDetector＋68 點 tiny＋128 維特徵，dlib 對齊） ----
+  var faceP = null;
+  function faceReady(){
+    if (faceP) return faceP;
+    faceP = new Promise(function(ok, no){
+      if (window.faceapi) return ok();
+      var s = document.createElement('script'); s.src = FACE_LIB; s.onload = ok; s.onerror = function(){ no(new Error('face library')); };
+      document.head.appendChild(s);
+    }).then(function(){
+      return Promise.all([faceapi.nets.tinyFaceDetector.loadFromUri(FACE_MODELS), faceapi.nets.faceLandmark68TinyNet.loadFromUri(FACE_MODELS), faceapi.nets.faceRecognitionNet.loadFromUri(FACE_MODELS)]);
+    }).catch(function(e){ faceP = null; throw e; });
+    return faceP;
+  }
+  function faceStart(){
+    if (!window.faceapi) st('第一次使用，正在載入人臉模型（約 8 MB）… Loading face model…', 'warn');
+    faceReady().then(function(){ if (mode === 'face'){ st('看著鏡頭，靠近一點 · Look at the camera', ''); faceLoop(); } })
+      .catch(function(){ st('✖ 人臉模型載入失敗，請改用刷卡或 PIN · Face model failed', 'bad'); });
+  }
+  function faceFrame(){
+    var vw = video.videoWidth, vh = video.videoHeight, k = Math.min(1, 480 / vw), c = document.createElement('canvas');
+    c.width = Math.round(vw * k); c.height = Math.round(vh * k);
+    c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
+    return c;
+  }
+  function pick(a, src){ var best = null; (a || []).forEach(function(d){ if (d.box.height < src.height * 0.11) return; if (!best || d.box.area > best.box.area) best = d; }); return best; }
+  function faceDetect(src){
+    var det = null, srcD = src;
+    return Promise.resolve(faceapi.detectAllFaces(src, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))).then(function(a){
+      det = pick(a, src); if (det) return;
+      var e = document.createElement('canvas'); e.width = src.width; e.height = src.height;
+      var g = e.getContext('2d'); g.filter = 'brightness(1.6) contrast(1.2)'; g.drawImage(src, 0, 0);
+      return Promise.resolve(faceapi.detectAllFaces(e, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.4 }))).then(function(b){ det = pick(b, src); if (det) srcD = e; });
+    }).then(function(){
+      if (!det) return null;
+      return Promise.resolve(faceapi.extractFaces(srcD, [det])).then(function(f){ return faceapi.detectFaceLandmarksTiny(f[0]); })
+        .then(function(lm){ return faceapi.extractFaces(srcD, [lm.shiftBy(det.box.x, det.box.y).align(null, { useDlibAlignment: true })]); })
+        .then(function(f){ return faceapi.computeFaceDescriptor(f[0]); })
+        .then(function(desc){ return { det: det, desc: desc }; });
+    });
+  }
+  function faceLoop(){
+    if (mode !== 'face' || waiting || Date.now() > endAt || !stream || busyFace) return;
+    if (!video.videoWidth){ loopT = setTimeout(faceLoop, 100); return; }
+    busyFace = true;
+    faceDetect(faceFrame()).then(function(r){
+      busyFace = false;
+      if (mode !== 'face' || waiting) return;
+      if (!r || r.det.score < 0.6){ st('找臉中，請正對鏡頭 · Looking for your face…', ''); loopT = setTimeout(faceLoop, 60); return; }
+      waiting = true; st('確認中… Checking…', '');
+      tell({ pte: 'stn-id', kind: 'face', desc: Array.prototype.map.call(r.desc, function(x){ return Math.round(x * 1e6) / 1e6; }) });
+    }).catch(function(){ busyFace = false; loopT = setTimeout(faceLoop, 200); });
+  }
+
+  // 平板螢幕不要自己關
+  function keepAwake(){ if (navigator.wakeLock && document.visibilityState === 'visible') navigator.wakeLock.request('screen').catch(function(){}); }
+  keepAwake(); document.addEventListener('visibilitychange', keepAwake);
+})();
+</script>
+</body>
+</html>
