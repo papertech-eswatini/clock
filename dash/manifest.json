@@ -1,0 +1,13 @@
+{
+  "name": "PTE看板 Dashboard",
+  "short_name": "PTE看板",
+  "start_url": "./?go=1",
+  "scope": "./",
+  "display": "browser",
+  "background_color": "#2C2C2A",
+  "theme_color": "#2C2C2A",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
